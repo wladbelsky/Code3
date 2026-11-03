@@ -7,7 +7,7 @@ houses, a school and a park around them. The time of day follows your PC clock a
 From the author of [Forward Air Base](https://github.com/wladbelsky/air-base-wallpaper) and
 [Carrier Strike Group](https://github.com/wladbelsky/carrier-wallpaper).
 
-> **Work in progress.** The town and the units are in; the calls and the dispatch terminal are next.
+> **Work in progress.** The town, the units, the calls and the dispatch terminal are in; the scenes on site (fire, crashes, transports) are next.
 
 ![The town by day](screenshots/day.jpg)
 
@@ -46,9 +46,20 @@ From source:
   stop signs, and pull over at the curb on scene; on the way back they stop at red lights.
 - The fire station has drive-through bays: out through the front doors onto Main St, back in from the yard behind,
   up the lane beside the station; patrol cars back out of their stalls and pull in nose first.
-- For now drills stand in for the calls: now and then a unit goes to a house or out of town and comes back.
 
 ![A winter night run](screenshots/run.jpg)
+
+## Dispatch
+
+Calls come in on their own: medical calls and falls, fire alarms, structure fires, crashes, vehicle fires, gas odors,
+traffic stops, suspicious vehicles, burglary alarms, disturbances, mutual aid out of town. The dispatcher sends the
+free units each call needs (a structure fire gets the engine, the ladder, the rescue, a medic, the chief and a patrol
+car); what is missing joins as units come free. The **dispatch terminal** (CAD) shows the active calls with their
+units' status and the radio traffic: the dispatcher toning out, units answering, size-ups on arrival, updates, units
+clearing — plain language for fire and EMS, 10-codes for the police. Properties: **Dispatch terminal** on / off and its
+position, **Calls when it is quiet** (how often calls come in without music).
+
+![An evening structure fire on the terminal](screenshots/cad.jpg)
 
 ## Music
 

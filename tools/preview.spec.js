@@ -12,6 +12,9 @@ const SCENES = {
   day: { hour: 14, season: 'autumn', zoom: 100, at: [0, 0] },
   night: { hour: 22.5, season: 'winter', zoom: 100, at: [0, 0] },
   station: { hour: 16.5, season: 'summer', zoom: 260, at: [-6, 18] },
+  // an autumn evening: a structure fire called in, the terminal busy, units arriving
+  cad: { hour: 18.2, season: 'autumn', zoom: 100, at: [10, 30], prep: () => { CFG.calls = 0; DISPATCH.newCall('medical'); __t.sim(30); DISPATCH.newCall('structure'); },
+    until: () => DISPATCH.calls.some(c => c.key === 'structure' && c.status === 'onscene') && T - DISPATCH.calls.find(c => c.key === 'structure').arrived > 12 },
   // a winter night run: the engine and a medic pulling out onto Main St, lights going
   run: { hour: 21.5, season: 'winter', zoom: 190, at: [-12, 38], prep: () => { CFG.calls = 0; UNITS[0].dispatch(houseDest(CITY.houses[22], 0)); UNITS[3].dispatch(houseDest(CITY.houses[22], 1)); },
     until: () => UNITS[0].state === 'responding' && UNITS[0].pos.z > 49 && UNITS[0].pos.x > -24 }

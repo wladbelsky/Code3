@@ -34,6 +34,8 @@ const avenueX = () => CITY_LAYOUT.avenues.find(a => a.x > 0 && a.x < 100).x;   /
 class Unit {
   constructor(type, cs, home, i) {
     this.type = type; this.spec = UNIT_TYPES[type]; this.cs = cs; this.i = i; this.ph = (i * 0.37) % 1;
+    // on the radio "Engine 12", on the CAD "E12" / "BC1" / "2A11"; callRef = the call it is on (DISPATCH)
+    this.radio = titleCase(cs); this.short = type === 'patrol' ? cs.replace(/-ADAM-/, 'A') : this.spec.tag + cs.split(' ').pop(); this.callRef = null; this.cadState = 'quarters';
     const m = this.model = UNIT_MODELS[type](); this.len = m.len; this.wid = m.wid;
     // glow points over the bar's two halves (they flash with it), head / tail lights at night
     const glow = ph => { const b = m.bars.filter(s => s.ph === ph && s.mesh.position.y > 1.6); if (!b.length) return null;
@@ -310,28 +312,11 @@ function buildUnits() {
    along the street */
 function houseDest(h, slot) {
   const st = CITY_LAYOUT.streets.find(s => s.name === h.street), dir = h.face > 0 ? 'W' : 'E', sg = DIRV[dir][0];
-  const a = h.x + (slot || 0) * 13 * sg, curbZ = st.z - h.face * (ROAD_W / 2 + 0.5);
-  return { ax: 'ew', at: st.z, a: a - sg * 12, dir, curb: [a, curbZ], house: h };
+  const a = h.x + (slot || 0) * 15 * sg, curbZ = st.z - h.face * (ROAD_W / 2 + 0.5);
+  return { ax: 'ew', at: st.z, a: a - sg * 8, dir, curb: [a, curbZ], house: h };
 }
 /* out of town along a street: one of the far ends */
 function farDest() {
   const L = CITY_LAYOUT, ew = Math.random() < 0.5, line = ew ? pick(L.streets).z : pick(L.avenues).x, sgn = Math.random() < 0.5 ? -1 : 1;
   return { far: { ax: ew ? 'ew' : 'ns', at: line, a: sgn * L.ext, dir: ew ? (sgn > 0 ? 'E' : 'W') : (sgn > 0 ? 'S' : 'N') } };
 }
-
-/* ===== Drills (stage 3 stand-in for the CAD): now and then a unit goes to a house or out of town and comes back ===== */
-const DRILL = {
-  timer: 6,
-  update(dt) {
-    if (CFG.calls <= 0) return;
-    for (const u of UNITS) if ((u.state === 'on_scene' || u.state === 'away') && u.t > u.dwell) u.release();
-    this.timer -= dt; if (this.timer > 0) return;
-    this.timer = rand(20, 45) * 5 / Math.max(1, CFG.calls) * (1 - LOAD.level * 0.6);
-    const free = UNITS.filter(u => u.state === 'quarters'); if (!free.length) return;
-    const u = pick(free), busy = new Set(UNITS.filter(o => o.call && o.call.house).map(o => o.call.house));
-    const houses = CITY.houses.filter(h => !busy.has(h));
-    const d = Math.random() < 0.2 || !houses.length ? farDest() : houseDest(pick(houses), 0);
-    u.dwell = d.far ? rand(40, 90) : rand(25, 50);
-    u.dispatch(d);
-  }
-};

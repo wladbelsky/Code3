@@ -53,6 +53,7 @@ function applySettings() {
   const title = document.querySelector('#panel .title'); if (title) title.textContent = `◆ ${CFG.townName} · DISPATCH`;
   if (!ready) return;
   if (townShown !== CFG.townName) { townShown = CFG.townName; CITY.setTown(CFG.townName); }
+  TERM.apply();
   sunLight.castShadow = CFG.shadows;
   updateCamera(); updateEnvironment();
 }
@@ -88,6 +89,7 @@ function init() {
   ready = true;
   window.addEventListener('resize', resize);
   buildUnits();
+  TERM.build();
   buildUI(); applySettings(); resize(); updateEnvironment(); updateLights();
   requestAnimationFrame(frame);
 }
@@ -313,7 +315,8 @@ function step(dt) {
   if (CFG.camRotate) { camAz += CFG.camDir * CFG.camSpeed * DEG * dt; updateCameraPose(); }
   CITY.update(dt);
   for (const u of UNITS) u.update(dt);
-  DRILL.update(dt);
+  DISPATCH.update(dt);
+  RADIO.update(dt);
   LOAD.update(dt);
   FX.tracers.update(dt);
   FX.flash.update(dt);
@@ -324,7 +327,7 @@ function step(dt) {
   updateLights();
 
   envTimer -= dt; if (envTimer <= 0) { envTimer = 2; updateEnvironment(); }
-  uiTimer -= dt; if (uiTimer <= 0) { uiTimer = 0.25; updateUI(); }
+  uiTimer -= dt; if (uiTimer <= 0) { uiTimer = 0.25; updateUI(); TERM.update(); }
   meterTimer -= dt; if (meterTimer <= 0) { meterTimer = 0.05; updateMeter(); }
 }
 

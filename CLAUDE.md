@@ -10,8 +10,8 @@ User-facing docs: `README.md` (keep it in sync when behaviour or properties chan
 
 ## Plan (stages)
 1. Skeleton from FAB — done. 2. Town and complex (`city.js`) — done. 3. Units: apparatus models, `Unit` state machine,
-roll out / return, road graph (`roads.js`), traffic rules — done (drills stand in for calls: `DRILL`). 4. CAD: calls, unit assignment, status, line pools,
-the terminal UI. 5. Scenes on site: structure fire, crash, medical, transport to the hospital. 6. Helicopters
+roll out / return, road graph (`roads.js`), traffic rules — done. 4. CAD: calls, unit assignment, status, line pools,
+the terminal UI — done. 5. Scenes on site: structure fire, crash, medical, transport to the hospital. 6. Helicopters
 (medevac, police). 7. Civilian traffic yielding to lights and sirens. 8. Load from the music, persistence, panel,
 properties; **a new panel design** — the FAB / CSG "radar" look (glowing green on black, monospace everywhere) goes:
 a flat graphite dispatch board with a red-blue header stripe, sans-serif text (monospace only for numbers), units as
@@ -25,7 +25,7 @@ fictional (default FAIRHAVEN).
 - Plain JS, no build step, no npm. `'use strict'` classic scripts sharing **global** scope
   (no modules). three.js **r149** is vendored as `js/three.min.js` — never edit it.
 - `index.html` loads scripts in dependency order (later files use globals of earlier ones):
-  `core → flightpath → models → vehicles → city → terrain → effects → roads → units → main → properties → settings`,
+  `core → flightpath → models → vehicles → city → terrain → effects → roads → units → radio → incidents → dispatch → main → properties → settings`,
   then an inline script registers the WE audio listener (or starts the browser demo beat).
   `main.js` calls `init()` at its end, so anything `init()` needs must be defined before `main.js`.
 
@@ -38,7 +38,10 @@ fictional (default FAIRHAVEN).
 | `js/city.js` | `CITY_LAYOUT` (the one source of positions), `buildCity()`, `CITY` (houses with addresses, bays with roll-up doors, police lot stalls, signals, signs, `vegAt`, `signal(axis)`, `update`, `setTown`), `pavedAt` — see "Town" |
 | `js/terrain.js` | `TERRAIN`: the ground (tiled canvas texture + vertex-colour patches), the vegetation per season (InstancedMesh per kind, placed where `CITY.vegAt` allows), weather particles (snowfall, falling leaves) |
 | `js/roads.js` | `ROADS`: the street graph (crossings + far ends), `route(from, to)` (Dijkstra over node × heading: no U-turns on screen), `lane` (right-hand offsets), `way(from, to, pre, post, o)`; `Way` (rounded, sampled polyline with headings and a curvature / braking speed limit) — see "Units & traffic" |
-| `js/units.js` | `UNIT_TYPES`, `ROSTER`, `Unit` (homes, run state machine, zones, traffic rules, light bars), `UNITS`, `ZONES`, `houseDest` / `farDest`, `DRILL` — see "Units & traffic" |
+| `js/units.js` | `UNIT_TYPES`, `ROSTER`, `Unit` (homes, run state machine, zones, traffic rules, light bars; `radio` / `short` names, `callRef`), `UNITS`, `ZONES`, `houseDest` / `farDest` — see "Units & traffic" |
+| `js/radio.js` | line pools (`DISPATCH_LINES`, `ACK_LINES`, `ON_SCENE`, `UPDATE_LINES`, `CLEAR_LINES`…), `radioLine(pool, vars)`, load tiers, `cadNow`, `RADIO` (the queue the terminal prints) — see "CAD" |
+| `js/incidents.js` | `INCIDENT_TYPES`, sites (houses, `BUSINESSES`, street spots, crossings, far ends), `pickSite`, `siteSlots`, `siteDest` |
+| `js/dispatch.js` | `DISPATCH` (calls, assignment, the call's course, `onState`), `TERM` (the CAD terminal DOM) |
 | `js/effects.js` | `Tracers` (InstancedMesh, will carry the hose streams), `SpriteFX` (flash / smoke pools), `Scorch`, `FlashLights` |
 | `js/main.js` | WE property listener, scene init, camera, `VIEW` (screen helpers), light / season (`updateEnvironment`, `updateLights`), audio analysis + `onBeat`, `LOAD`, panel, main loop |
 | `js/properties.js` | **generated** from `project.json` — do not edit by hand |
@@ -48,7 +51,7 @@ fictional (default FAIRHAVEN).
 
 ## Rules / conventions
 - **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in
-  `index.html` (WE's CEF caches aggressively). Current: `v=4`.
+  `index.html` (WE's CEF caches aggressively). Current: `v=6`.
 - **New WE property**: add it to `project.json`, read it in `applyUserProperties` (`main.js`) into `CFG`,
   then run `python tools/gen_properties.py`. Property `order` decides the browser-drawer group
   (0–9 camera/time, 10–19 audio/calls, 20–29 terrain & season, 30–39 panel & terminal, 40–49 units, 50–59 town).
@@ -109,6 +112,27 @@ fictional (default FAIRHAVEN).
   states held past `STATE_LIMITS`.
 - **Light bars**: `flash(on, a)` swaps the segments' materials and the glow points' `userData.on` only on a change; with
   music (`LOAD.level` > 0.15) every beat swaps the sides, otherwise they alternate at ~2.4 Hz.
+
+## CAD (`js/dispatch.js`, `js/incidents.js`, `js/radio.js`)
+- **Calls**: every `600 / CFG.calls` s × (1 … 0.25 with `LOAD`) × rand, at most `MAX_CALLS` open; the type by the load
+  tier's weights (`INCIDENT_TYPES.w` = [routine, busy, surge]) among types whose first unit type has someone free.
+  `newCall(key)` → a site of one of the type's kinds (`pickSite`, ≥ 70 m from other open calls on the same street) →
+  `assign`: one free unit (quarters, no `callRef`) per needed type (+ `extra` by chance); what is missing is filled in
+  every 2 s as units come free (HOLDING while none). Statuses: pending → holding / dispatched → onscene → clearing → closed.
+- **Course**: `DISPATCH.update` watches each unit's state (`cadState`) and calls `onState`: ENRT, ONSC (the first
+  arrival sets `arrived` and gives the size-up `ON_SCENE[kind]`), returning = cleared (AVAIL, `callRef` = null). Up to two
+  `UPDATE_LINES` while working; after `dwell` the units are released one by one (the chief last); closed once all cleared.
+  Police units on a fire / EMS call use the `pd` pools.
+- **Sites**: curbs (`site(kind, ax, at, a, side, name)`); `siteSlots` = curb places 15 m apart on the site's side, then
+  across the street, none within 16 m of a crossing; units pull over 8 m after leaving the lane. Far (mutual aid): a
+  street's end, the same for all of the call's units.
+- **Radio** (`RADIO.say(who, text, kind, prio)`): 'sys' CAD lines go straight to the log, the rest are queued one at a
+  time (gap ~1.6 s + length), stale ones (> 45 s, prio 0) dropped. Every line through `radioLine` (tiers: routine /
+  busy / surge from `LOAD`; placeholders {U} {L} {T} {A} {X} {N} {D} {S} {H} {P}). Fire / EMS plain language, police
+  10-codes. Times: `cadNow` (the fixed hour runs on with T).
+- **Terminal** (`TERM`, `#cad`): header (town 911 · CAD, TONES flashing on a new call, clock), up to 3 call cards (unit
+  chips coloured by status: dsp / enr / osc / avl / clr), the last 9 log lines; properties `terminal`, `terminalposition`.
+  The cards are rebuilt only when their HTML changes.
 
 ## Performance & memory invariants (the wallpaper never restarts — leaks accumulate for days)
 - **Never create geometry per spawn and drop it.** Pool and clone templates; anything removed for good is disposed

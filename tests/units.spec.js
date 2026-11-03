@@ -64,7 +64,7 @@ test('with music the bars flash on the beat', async ({ wp }) => {
   expect(r.onBeat).toBe(r.changes);
 });
 
-test('drills keep units moving for 40 minutes without anyone getting stuck, overlapping or driving through a shut door', async ({ wp }) => {
+test('the dispatcher keeps units moving for 40 minutes without anyone getting stuck, overlapping or driving through a shut door', async ({ wp }) => {
   test.setTimeout(8 * 60 * 1000);
   await wp.boot();
   const runs = new Set();
