@@ -7,7 +7,8 @@
    town and are gone for a while.
    INCIDENT_TYPES: name (CAD type), kind (the line pools: ON_SCENE / UPDATE_LINES), svc (who tones out: fire / ems / pd),
    units (types needed, one each), extra ([type, chance] added sometimes), at (site kinds), dwell (s on scene after the
-   first arrival), w (weight per load tier: routine / busy / surge), self (a patrol's own stop: no tone-out), details. */
+   first arrival), w (weight per load tier: routine / busy / surge), self (a patrol's own stop: no tone-out), air (a
+   helicopter the first unit in asks for), details. Helicopter types (HELI_TYPES) go in units / extra like the others. */
 const INCIDENT_TYPES = {
   medical:   { name: 'MEDICAL', kind: 'medical', svc: 'ems', units: ['medic'], extra: [['engine', 0.35]], at: ['house', 'house', 'business'], dwell: [60, 110], w: [6, 5, 4],
     details: ['Caller reports a male, 60s, chest pain.', 'Female, 80s, difficulty breathing.', 'Diabetic, not acting right.', 'Caller states her husband is dizzy and pale.', 'Unknown medical, caller hung up.'] },
@@ -26,10 +27,16 @@ const INCIDENT_TYPES = {
   stop:      { name: 'TRAFFIC STOP', kind: 'stop', svc: 'pd', units: ['patrol'], at: ['street'], dwell: [40, 80], w: [3, 3, 2], self: true },
   suspicious:{ name: 'SUSPICIOUS VEHICLE', kind: 'pd', svc: 'pd', units: ['patrol'], at: ['street', 'business'], dwell: [40, 70], w: [2, 1.5, 1],
     details: ['Vehicle parked with the engine running for an hour.', 'Caller reports a van circling the block.'] },
-  burglary:  { name: 'BURGLARY ALARM', kind: 'pd', svc: 'pd', units: ['patrol', 'patrol'], at: ['business', 'house'], dwell: [60, 110], w: [1.5, 2, 2],
+  burglary:  { name: 'BURGLARY ALARM', kind: 'pd', svc: 'pd', units: ['patrol', 'patrol'], extra: [['air1', 0.2]], at: ['business', 'house'], dwell: [60, 110], w: [1.5, 2, 2],
     details: ['Alarm company reports a rear door, zone 2.', 'Motion alarm, interior, no keyholder.'] },
   disturbance: { name: 'DISTURBANCE', kind: 'pd', svc: 'pd', units: ['patrol', 'patrol'], at: ['house', 'business'], dwell: [60, 120], w: [1.5, 2, 3],
     details: ['Caller reports loud yelling next door.', 'Two males arguing in the parking lot.', 'Neighbor dispute over a fence.'] },
+  search:    { name: 'SUSPECT SEARCH', kind: 'pd', svc: 'pd', units: ['patrol', 'patrol', 'air1'], at: ['house', 'business'], dwell: [100, 160], w: [0.5, 1, 1.5],
+    details: ['Burglary suspect fled on foot, last seen heading north through the yards.', 'Caller reports a prowler in the backyards, dark clothing.', 'Driver ran from a traffic stop, last seen behind the houses.'] },
+  entrapment:{ name: 'MVA WITH ENTRAPMENT', kind: 'mva', svc: 'fire', units: ['engine', 'rescue', 'medic', 'patrol'], air: 'medevac', at: ['crossing'], dwell: [150, 220], w: [0.15, 0.5, 1],
+    details: ['Rollover, caller says the driver is trapped and not moving.', 'Head-on collision, one pinned in the vehicle.', 'Car into a pole at speed, the driver is trapped.'] },
+  medevac:   { name: 'MEDEVAC REQUEST', kind: 'air', svc: 'ems', units: ['medevac'], at: ['air'], dwell: [50, 90], w: [0.4, 0.5, 0.6],
+    details: ['Out-of-district crash, one critical, requesting air transport.', 'Fall from height at a farm, ground transport over 40 minutes.', 'Rollover with ejection, landing zone at the scene.'] },
   mutual:    { name: 'MUTUAL AID - STRUCTURE FIRE', kind: 'far', svc: 'fire', units: ['engine', 'chief'], at: ['far'], dwell: [150, 260], w: [0.3, 0.6, 1] }
 };
 
@@ -81,11 +88,16 @@ function farSite() {
   const d = farDest().far, dirName = d.dir, road = lineOf(d.ax, d.at).name;
   return { kind: 'far', far: d, name: `${road} AT THE ${FAR_TOWNS[dirName]} LINE`, cross: FAR_TOWNS[dirName] };
 }
+/* out of town for a helicopter: a point well beyond a screen edge (fx, fz) */
+function airSite() {
+  const d = pick(['N', 'S', 'E', 'W']), [ux, uz] = DIRV[d], t = rand(-250, 250);
+  return { kind: 'air', fx: ux ? ux * 900 : t, fz: uz ? uz * 900 : t, name: `${pick(['ROUTE 9', 'COUNTY ROAD 12', 'RIVER ROAD', 'QUARRY ROAD'])}, ${FAR_TOWNS[d]}`, cross: FAR_TOWNS[d] };
+}
 /* a site of a kind, away from the other active calls */
 function pickSite(kind, busy) {
   for (let n = 0; n < 20; n++) {
-    const s = kind === 'house' ? houseSite(pick(CITY.houses)) : kind === 'business' ? pick(BUSINESSES)() : kind === 'street' ? streetSite() : kind === 'crossing' ? crossingSite() : farSite();
-    if (s.kind === 'far' || !busy.some(b => b.kind !== 'far' && b.ax === s.ax && b.at === s.at && Math.abs(b.a - s.a) < 70)) return s;
+    const s = kind === 'house' ? houseSite(pick(CITY.houses)) : kind === 'business' ? pick(BUSINESSES)() : kind === 'street' ? streetSite() : kind === 'crossing' ? crossingSite() : kind === 'air' ? airSite() : farSite();
+    if (!s.ax || !busy.some(b => b.ax === s.ax && b.at === s.at && Math.abs(b.a - s.a) < 70)) return s;
   }
   return null;
 }

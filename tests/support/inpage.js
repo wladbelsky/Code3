@@ -59,6 +59,14 @@
       if (!a.model.group.visible || !c.model.group.visible || (a.state === 'quarters' && c.state === 'quarters')) continue;
       if (Math.hypot(a.pos.x - c.pos.x, a.pos.z - c.pos.z) < (a.wid + c.wid) / 2) v.push(`${who(a)} and ${who(c)} overlap`);
     }
+    // helicopters: known states, never below the ground or the pad, the rotor up to speed whenever they are off it
+    for (const h of HELIS) {
+      if (!HELI_STATES[h.state]) v.push(`unknown state ${who(h)}`);
+      if (!Number.isFinite(h.pos.x + h.pos.y + h.pos.z + h.h + h.v)) v.push(`NaN ${who(h)}`);
+      if (h.pos.y < -0.01) v.push(`${who(h)} below the ground`);
+      if (h.state === 'quarters' && h.pos.distanceTo(h.pad) > 0.05) v.push(`on the pad away from it ${who(h)}`);
+      if ((h.ph === 'fly' || h.ph === 'hover') && h.rpm < 0.95) v.push(`${who(h)} flying with the rotor at ${h.rpm.toFixed(2)}`);
+    }
     if (!Number.isFinite(T) || !Number.isFinite(LOAD.level)) v.push('NaN in the clock or the load');
     if (LOAD.level < 0 || LOAD.level > 1) v.push(`LOAD out of range ${LOAD.level}`);
     for (const b of CITY.bays) if (!(b.door.k >= 0 && b.door.k <= 1)) v.push(`bay ${b.i} door at ${b.door.k}`);
@@ -71,7 +79,7 @@
   /* how long each unit has been in its state; the longest per state (stuck detector) */
   H.reset = () => { H.since = new Map(); H.maxT = {}; };
   H.track = () => {
-    for (const u of UNITS) {
+    for (const u of [...UNITS, ...HELIS]) {
       const k = H.since.get(u);
       if (!k || k.state !== u.state) { H.since.set(u, { state: u.state, t0: T }); continue; }
       const d = T - k.t0, m = H.maxT[u.state];

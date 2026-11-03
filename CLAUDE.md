@@ -12,7 +12,7 @@ User-facing docs: `README.md` (keep it in sync when behaviour or properties chan
 1. Skeleton from FAB — done. 2. Town and complex (`city.js`) — done. 3. Units: apparatus models, `Unit` state machine,
 roll out / return, road graph (`roads.js`), traffic rules — done. 4. CAD: calls, unit assignment, status, line pools,
 the terminal UI — done. 5. Scenes on site: structure fire, crash, car fire, crews, transport to the hospital — done. 6. Helicopters
-(medevac, police). 7. Civilian traffic yielding to lights and sirens. 8. Load from the music, persistence, panel,
+(medevac, police) — done. 7. Civilian traffic yielding to lights and sirens. 8. Load from the music, persistence, panel,
 properties; **a new panel design** — the FAB / CSG "radar" look (glowing green on black, monospace everywhere) goes:
 a flat graphite dispatch board with a red-blue header stripe, sans-serif text (monospace only for numbers), units as
 status tiles (service colour + status colour: AVAIL green, ENRT amber, ONSC red, TRAN blue, OOS grey), active calls
@@ -25,14 +25,13 @@ fictional (default FAIRHAVEN).
 - Plain JS, no build step, no npm. `'use strict'` classic scripts sharing **global** scope
   (no modules). three.js **r149** is vendored as `js/three.min.js` — never edit it.
 - `index.html` loads scripts in dependency order (later files use globals of earlier ones):
-  `core → flightpath → models → vehicles → city → terrain → effects → roads → units → radio → incidents → dispatch → scenes → main → properties → settings`,
+  `core → models → vehicles → city → terrain → effects → roads → units → radio → incidents → dispatch → scenes → helis → main → properties → settings`,
   then an inline script registers the WE audio listener (or starts the browser demo beat).
   `main.js` calls `init()` at its end, so anything `init()` needs must be defined before `main.js`.
 
 | File | Contents |
 |---|---|
 | `js/core.js` | utils (`V3`, `TAU`, `rand`, `clamp`, `lerp`, `smoothstep`, `pick`…), `CFG` defaults, `WIND` (smoke drift), `groundH` (flat ground), `SEASONS` + `seasonNow()`, sun position, sky palette, canvas textures `TEX` |
-| `js/flightpath.js` | `FlightPath`: Dubins CSC curves (turn-radius-limited flight) + lines — for the helicopters |
 | `js/models.js` | mesh helpers (`M`, `box`, `cyl`, `taper`, `prism`, `strut`, `deckLine`…), `mergeStatic`, `disposeTree`, nav lights (`navLights`, `NAV_MATS`), searchlights, seasonal shared materials `ROOF_MAT` / `HOUSE_ROOFS` (`seasonMats`) |
 | `js/vehicles.js` | vehicle models, facing +x, wheels on y = 0: civilian cars (`carModel(kind, colour)`, `randomCar`); apparatus `UNIT_MODELS` (engine, ladder with `aerial` yaw / pitch / fly, rescue, medic, chief, patrol) → `{ group, bars, len, wid, dyn }`; light bar segments swap `LB_MATS` [off, on] |
 | `js/city.js` | `CITY_LAYOUT` (the one source of positions), `buildCity()`, `CITY` (houses with addresses, bays with roll-up doors, police lot stalls, signals, signs, `vegAt`, `signal(axis)`, `update`, `setTown`), `pavedAt` — see "Town" |
@@ -42,6 +41,7 @@ fictional (default FAIRHAVEN).
 | `js/radio.js` | line pools (`DISPATCH_LINES`, `ACK_LINES`, `ON_SCENE`, `UPDATE_LINES`, `CLEAR_LINES`…), `radioLine(pool, vars)`, load tiers, `cadNow`, `RADIO` (the queue the terminal prints) — see "CAD" |
 | `js/incidents.js` | `INCIDENT_TYPES`, sites (houses, `BUSINESSES`, street spots, crossings, far ends), `pickSite`, `siteSlots`, `siteDest` |
 | `js/dispatch.js` | `DISPATCH` (calls, assignment, the call's course, `onState`), `TERM` (the CAD terminal DOM) |
+| `js/helis.js` | `HELI_TYPES`, `HELI_LZ` / `lzFor`, `heliModel` / `HELI_MODELS`, `Heli` (flight, CAD states like a unit's, searchlight / landing light, rotor wash), `HELIS`, `buildHelis` — see "Helicopters" |
 | `js/scenes.js` | `SCENES`, `FireScene`, `CarFireScene`, `CrashScene`, `PROPS` (pooled wrecks / burnt cars / cones), `CREW` (figures on scene), `waterArc` — see "Scenes" |
 | `js/effects.js` | `Tracers` (InstancedMesh, will carry the hose streams), `SpriteFX` (flash / smoke pools), `Scorch`, `FlashLights` |
 | `js/main.js` | WE property listener, scene init, camera, `VIEW` (screen helpers), light / season (`updateEnvironment`, `updateLights`), audio analysis + `onBeat`, `LOAD`, panel, main loop |
@@ -52,7 +52,7 @@ fictional (default FAIRHAVEN).
 
 ## Rules / conventions
 - **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in
-  `index.html` (WE's CEF caches aggressively). Current: `v=7`.
+  `index.html` (WE's CEF caches aggressively). Current: `v=8`.
 - **New WE property**: add it to `project.json`, read it in `applyUserProperties` (`main.js`) into `CFG`,
   then run `python tools/gen_properties.py`. Property `order` decides the browser-drawer group
   (0–9 camera/time, 10–19 audio/calls, 20–29 terrain & season, 30–39 panel & terminal, 40–49 units, 50–59 town).
@@ -150,6 +150,20 @@ fictional (default FAIRHAVEN).
   code 3 at 25 %): in at `HOSP.inX`, under the canopy to a free place (`HOSP.slots`), `at_hospital` 40–80 s, out at
   `HOSP.outX` and home (`leaveHospital` → `goHome(from, pre)`). Its radio goes on without the call (`onState`, `!callRef`).
 - **CrashScene**: the wrecks 11 / 17 m from the crossing; the units' curb (`crossingSite`) 30 m up the approach.
+
+## Helicopters (`js/helis.js`)
+- **Air 1** (police) lives on the complex's pad (`CITY_LAYOUT.helipad`), **Medevac 1** on the hospital's roof pad. They
+  are not `UNITS` (no roads, no zones): `HELIS`, the same CAD states (`HELI_STATES`), `air: true`; the dispatcher treats
+  them as units (`free`, `assign` → `dispatch(site)`, `release`; their radio: `DISPATCH.onAir`, `AIR_LINES`).
+- **Flight** (`ph`): pad → spinup → lift (8 m) → fly → hover (8 m over the spot, turned to the pad's heading) → descend →
+  pad / ground. `fly` steers: the heading turns no faster than a 0.45 rad bank allows, speed and height are eased; a landing
+  slows to stop over the spot (the last 40 m straight at it), an orbit keeps `orbitR` round the call, an exit leaves the
+  screen (`away`: hidden until released, then back from there). Rotor wash: dust (`ENV.dustTint`) when low.
+- **Calls**: SUSPECT SEARCH (two patrols + Air 1; a burglary alarm sometimes gets it), Air 1 orbits the site, its
+  searchlight (the one real `SpotLight`) wandering on the ground there at night. MVA WITH ENTRAPMENT: the first unit in asks
+  for the helicopter (`type.air` → `need`), Medevac 1 lands at the nearest landing zone (`HELI_LZ`: the school field, the
+  park lawn — kept clear of trees) and, released, flies the patient to the roof (`transporting` → `at_hospital` →
+  quarters). MEDEVAC REQUEST (`kind: 'air'`, `airSite`): out of town and back to the roof.
 
 ## Performance & memory invariants (the wallpaper never restarts — leaks accumulate for days)
 - **Never create geometry per spawn and drop it.** Pool and clone templates; anything removed for good is disposed

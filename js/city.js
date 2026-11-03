@@ -379,6 +379,7 @@ function buildPark(g) {
   deckLine(g, -38, 62, 38, 138, 2, pathC, 0.03); deckLine(g, -38, 138, 38, 62, 2, pathC, 0.03);
   disc(g, 20, 120, 11, 0x3a6a8a, 0.03, 40); disc(g, 20, 120, 12, 0x7a7a60, 0.025, 40); keepOut(7, 107, 33, 133);
   box(g, 7, 0.1, 7, 0xc8a878, -20, 0.05, 80); keepOut(-25, 75, -15, 85);
+  keepOut(-31, 109, -13, 127);   // the lawn Medevac 1 lands on (HELI_LZ)
   box(g, 0.15, 2.6, 0.15, 0xc02020, -22, 1.3, 78); box(g, 0.15, 2.6, 0.15, 0xc02020, -18, 1.3, 78); box(g, 4.2, 0.15, 0.15, 0xc02020, -20, 2.6, 78);
   box(g, 2.4, 1.2, 1.2, 0x2a6ab0, -19, 0.6, 82); taper(g, 1.6, 2.2, 0.6, 0xf0c020, -22, 1.1, 82.4, 0.3, 1, 0);
   const gz = new THREE.Group(); gz.position.set(0, 0, 100); g.add(gz);

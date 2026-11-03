@@ -21,6 +21,12 @@ const SCENES = {
   // a crash at a crossing on a summer afternoon
   crash: { hour: 15, season: 'summer', zoom: 220, at: [0, 0], prep: () => { CFG.calls = 0; const c = DISPATCH.newCall('mva'); const [x, z] = siteXZ(c.site, c.site.a, 4); CAM_TGT.set(x, 0, z); updateCamera(); },
     until: () => { const c = DISPATCH.calls[0]; return c.status === 'onscene' && T - c.arrived > 15; } },
+  // a summer night search: Air 1 orbiting over the houses, its searchlight on the yards (the camera halfway up to it)
+  heli: { hour: 23, season: 'summer', zoom: 150, at: [0, 0], prep: () => { CFG.calls = 0; const c = DISPATCH.newCall('search'), g = HELIS[0]; g.update(0.05); CAM_TGT.set(g.goal.x, 24, g.goal.z); updateCamera(); },
+    until: () => { const h = HELIS[0], g = h.goal; return h.state === 'on_scene' && h.t > 14 && g.x - h.pos.x + h.pos.z - g.z > 40; } },   // (on the camera's side of the circle)
+  // Medevac 1 settling onto the landing zone for an entrapment, the dust blowing out from under it
+  medevac: { hour: 11, season: 'spring', zoom: 230, at: [0, 0], prep: () => { CFG.calls = 0; const c = DISPATCH.newCall('entrapment'), l = lzFor(c.site); CAM_TGT.set(l.x, 3, l.z); updateCamera(); },
+    until: () => HELIS[1].ph === 'descend' && HELIS[1].pos.y < 3.5 },
   // a winter night run: the engine and a medic pulling out onto Main St, lights going
   run: { hour: 21.5, season: 'winter', zoom: 190, at: [-12, 38], prep: () => { CFG.calls = 0; UNITS[0].dispatch(houseDest(CITY.houses[22], 0)); UNITS[3].dispatch(houseDest(CITY.houses[22], 1)); },
     until: () => UNITS[0].state === 'responding' && UNITS[0].pos.z > 49 && UNITS[0].pos.x > -24 }

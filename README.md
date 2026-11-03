@@ -7,7 +7,7 @@ houses, a school and a park around them. The time of day follows your PC clock a
 From the author of [Forward Air Base](https://github.com/wladbelsky/air-base-wallpaper) and
 [Carrier Strike Group](https://github.com/wladbelsky/carrier-wallpaper).
 
-> **Work in progress.** The town, the units, the calls, the dispatch terminal and the scenes on site are in; helicopters and civilian traffic are next.
+> **Work in progress.** The town, the units, the calls, the dispatch terminal, the scenes on site and the helicopters are in; civilian traffic is next.
 
 ![The town by day](screenshots/day.jpg)
 
@@ -41,6 +41,8 @@ From source:
 | Medic 12, Medic 14 | fire station bays | Type I ambulances |
 | Battalion 1 | fire station bay | the chief's SUV |
 | 2-Adam-11 … 15 | police lot | patrol cars |
+| Air 1 | the helipad by the station | the police helicopter, a searchlight under the nose |
+| Medevac 1 | the hospital's roof pad | the air ambulance |
 
 - Units roll out with lights flashing (on the beat while music plays), keep right, slow down through red lights and
   stop signs, and pull over at the curb on scene; on the way back they stop at red lights.
@@ -74,6 +76,18 @@ position, **Calls when it is quiet** (how often calls come in without music).
 | A house fire at dusk | A crash at a crossing |
 |---|---|
 | ![House fire](screenshots/fire.jpg) | ![Crash](screenshots/crash.jpg) |
+
+## Helicopters
+
+- **Air 1** goes up on suspect searches (and sometimes on a burglary alarm): it orbits over the yards, and at night its
+  searchlight sweeps the ground below. When the search is over it flies home, hovers over its pad and settles.
+- **Medevac 1**: on a crash with someone trapped, the first unit in asks for it; it lands at the nearest landing zone
+  (the high school field or the park lawn), dust blowing out under the rotor, and then flies the patient to the
+  hospital's roof. Out-of-town requests take it off the screen and back with a patient.
+
+| Air 1 over a night search | Medevac 1 at the park landing zone |
+|---|---|
+| ![Air 1](screenshots/heli.jpg) | ![Medevac 1](screenshots/medevac.jpg) |
 
 ## Music
 

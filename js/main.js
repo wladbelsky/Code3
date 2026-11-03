@@ -91,7 +91,7 @@ function init() {
 
   ready = true;
   window.addEventListener('resize', resize);
-  buildUnits();
+  buildUnits(); buildHelis();
   TERM.build();
   buildUI(); applySettings(); resize(); updateEnvironment(); updateLights();
   requestAnimationFrame(frame);
@@ -318,6 +318,7 @@ function step(dt) {
   if (CFG.camRotate) { camAz += CFG.camDir * CFG.camSpeed * DEG * dt; updateCameraPose(); }
   CITY.update(dt);
   for (const u of UNITS) u.update(dt);
+  for (const h of HELIS) h.update(dt);
   DISPATCH.update(dt);
   RADIO.update(dt);
   LOAD.update(dt);

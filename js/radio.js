@@ -6,7 +6,7 @@
    then to any. The same line never comes twice in a row from one pool.
    Placeholders: {U} the unit ("Engine 12"), {L} the unit list ("Engine 12, Ladder 12 and Medic 12"), {T} the call
    type ("structure fire"), {A} the address, {X} the cross street, {N} the call number, {D} the caller's detail,
-   {S} the street (for "Oak command"), {H} the hospital, {P} the town.                                           */
+   {S} the street (for "Oak command"), {H} the hospital, {P} the town, {Z} the helicopter's landing zone.                                           */
 const LOAD_TIERS = ['routine', 'busy', 'surge'];
 /* the CAD's clock: the PC clock, or with a fixed hour (the sun stands still) the hour plus the time run since */
 const cadNow = () => CFG.timeMode === 'fixed' ? new Date(getNow().getTime() + T * 1000) : getNow();
@@ -69,6 +69,30 @@ const CLEAR_LINES = {
   ems: ['{U}, available.', '{U}, clear and available.'],
   pd: ['{U}, 10-8.', '{U}, 10-98, back in service.', '{U}, clear, 10-8.']
 };
+/* the helicopters: Air 1 over a call, Medevac 1 to a landing zone (or out of town) and the patient to the hospital's roof */
+const AIR_LINES = {
+  air1: {
+    disp: ['{L}, assist units at {A}, {T}. {D}', '{L}, respond to {A}, {T}, units on scene. {D}'],
+    ack: ['{U} copies, lifting.', '{U}, we\'re up, about a minute out.', '{U}, copy, en route.'],
+    onScene: ['{U} is overhead, starting a search pattern.', '{U}, on scene, setting up an orbit.', '{U} overhead {A}.'],
+    night: ['{U} is overhead, light is on.', '{U}, on scene, we\'ll light up the backyards.', '{U} overhead, FLIR is up.'],
+    update: ['{U}, I have a heat source behind the house to the north, have a unit check it.', '{U}, nothing on the camera in the immediate area.', '{U}, the subject is moving east through the backyards.', '{U}, the perimeter looks good from up here.'],
+    clear: ['{U}, clearing, returning to base.', '{U}, we\'re done here, heading back to the pad.']
+  },
+  medevac: {
+    disp: ['{L}, launch request, {T}, {A}. Landing zone at the {Z}.', '{L}, scene flight to {A}, {T}. LZ is the {Z}.'],
+    dispFar: ['{L}, launch request, {A}. {D}', '{L}, scene flight out of district, {A}. {D}'],
+    ack: ['{U} copies, lifting. Landing at the {Z}.', '{U}, launching, ETA three minutes to the {Z}.'],
+    ackFar: ['{U} copies, lifting, en route to {X}.', '{U}, launching, about twelve minutes out.'],
+    onScene: ['{U} is on the ground at the {Z}.', '{U}, skids down at the {Z} LZ.'],
+    away: ['{U} is on the ground with {X} units.', '{U}, landed at the scene in {X}.'],
+    transport: ['{U}, lifting with one patient, en route to {H}.', '{U}, off the ground with one, headed to {H}, priority one.'],
+    atHosp: ['{U}, on the pad at {H}.', '{U}, landed at {H}.'],
+    avail: ['{U}, back in service at {H}.', '{U}, available at {H}.']
+  }
+};
+/* the first unit in on a bad crash asks for the helicopter */
+const REQ_AIR_LINES = ['{U}, we have one trapped, critical. Start Medevac 1, land it at the {Z}.', '{U}, we\'re going to need a helicopter for this one. LZ will be the {Z}.'];
 const COPY_LINES = ['Copy, {U}.', 'Copy.', '{U}, copy.', 'Received, {U}.'];
 const HOLD_LINES = ['All units, {P} has calls holding. Any unit available, advise.', 'Calls holding, no units available.'];
 
