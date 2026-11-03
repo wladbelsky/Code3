@@ -1,0 +1,29 @@
+// Renders the README screenshots (screenshots/<scene>.jpg, 1280x720, see SCENES) into test-results/<scene>-<seed>.jpg;
+// copy the best over screenshots/. Run in Docker:
+//   powershell -ExecutionPolicy Bypass -File tools/test.ps1 -c tools/preview.config.js            (everything)
+//   powershell -ExecutionPolicy Bypass -File tools/test.ps1 -c tools/preview.config.js -g "night," (one scene)
+// The Workshop GIF (preview.gif) comes with the units (stage 9); preview.gif is still a placeholder.
+const { test } = require('../tests/support/harness');
+
+test.setTimeout(4 * 60 * 1000);
+const SEEDS = 1;
+/* hour, season, zoom, camera target; the page functions are serialised: no closures */
+const SCENES = {
+  day: { hour: 14, season: 'autumn', zoom: 100, at: [0, 0] },
+  night: { hour: 22.5, season: 'winter', zoom: 100, at: [0, 0] },
+  station: { hour: 16.5, season: 'summer', zoom: 260, at: [-6, 18] },
+  // a winter night run: the engine and a medic pulling out onto Main St, lights going
+  run: { hour: 21.5, season: 'winter', zoom: 190, at: [-12, 38], prep: () => { CFG.calls = 0; UNITS[0].dispatch(houseDest(CITY.houses[22], 0)); UNITS[3].dispatch(houseDest(CITY.houses[22], 1)); },
+    until: () => UNITS[0].state === 'responding' && UNITS[0].pos.z > 49 && UNITS[0].pos.x > -24 }
+};
+for (const [name, S] of Object.entries(SCENES)) for (let seed = 1; seed <= SEEDS; seed++) {
+  test(`${name}, seed ${seed}`, async ({ wp }) => {
+    await wp.boot({ seed, query: `?hour=${S.hour}&season=${S.season}` });
+    await wp.run(([zoom, at]) => { CFG.zoom = zoom; CAM_TGT.set(at[0], 0, at[1]); updateCamera(); }, [S.zoom, S.at]);
+    await wp.sim(2.5);
+    if (S.prep) await wp.run(`(${S.prep})()`);
+    if (S.until) await wp.until(S.until, 200);
+    await wp.run(() => __t.render());
+    await wp.page.screenshot({ path: `test-results/${name}-${seed}.jpg`, quality: 88 });
+  });
+}

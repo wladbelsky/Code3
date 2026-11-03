@@ -1,0 +1,224 @@
+'use strict';
+/* Generated from project.json by tools/gen_properties.py — do not edit by hand */
+const WE_PROPERTIES = {
+ "schemecolor": {
+  "order": 0,
+  "text": "ui_browse_properties_scheme_color",
+  "type": "color",
+  "value": "0.55 0.12 0.10"
+ },
+ "zoom": {
+  "order": 1,
+  "text": "Camera zoom, %",
+  "type": "slider",
+  "min": 50,
+  "max": 250,
+  "value": 100
+ },
+ "camerarotate": {
+  "order": 2,
+  "text": "Rotate camera",
+  "type": "bool",
+  "value": false
+ },
+ "rotationspeed": {
+  "order": 3,
+  "text": "Rotation speed, °/s",
+  "type": "slider",
+  "min": 0.2,
+  "max": 15,
+  "value": 2,
+  "fraction": true,
+  "precision": 1,
+  "condition": "camerarotate.value == true"
+ },
+ "rotationdirection": {
+  "order": 4,
+  "text": "Rotation direction",
+  "type": "combo",
+  "value": "1",
+  "condition": "camerarotate.value == true",
+  "options": [
+   {
+    "label": "Clockwise",
+    "value": "1"
+   },
+   {
+    "label": "Counter-clockwise",
+    "value": "-1"
+   }
+  ]
+ },
+ "timemode": {
+  "order": 5,
+  "text": "Time of day",
+  "type": "combo",
+  "value": "real",
+  "options": [
+   {
+    "label": "PC clock",
+    "value": "real"
+   },
+   {
+    "label": "Fixed hour",
+    "value": "fixed"
+   }
+  ]
+ },
+ "fixedhour": {
+  "order": 6,
+  "text": "Fixed hour",
+  "type": "slider",
+  "min": 0,
+  "max": 23.9,
+  "value": 12,
+  "fraction": true,
+  "precision": 1,
+  "condition": "timemode.value == 'fixed'"
+ },
+ "shadows": {
+  "order": 7,
+  "text": "Shadows",
+  "type": "bool",
+  "value": true
+ },
+ "audiosensitivity": {
+  "order": 10,
+  "text": "Audio sensitivity, %",
+  "type": "slider",
+  "min": 20,
+  "max": 300,
+  "value": 100
+ },
+ "callfrequency": {
+  "order": 11,
+  "text": "Calls when it is quiet (0 = none)",
+  "type": "slider",
+  "min": 0,
+  "max": 10,
+  "value": 5
+ },
+ "season": {
+  "order": 20,
+  "text": "Season",
+  "type": "combo",
+  "value": "auto",
+  "options": [
+   {
+    "label": "By PC date",
+    "value": "auto"
+   },
+   {
+    "label": "Spring",
+    "value": "spring"
+   },
+   {
+    "label": "Summer",
+    "value": "summer"
+   },
+   {
+    "label": "Autumn",
+    "value": "autumn"
+   },
+   {
+    "label": "Winter",
+    "value": "winter"
+   }
+  ]
+ },
+ "weather": {
+  "order": 21,
+  "text": "Snowfall / falling leaves",
+  "type": "bool",
+  "value": true
+ },
+ "showpanel": {
+  "order": 30,
+  "text": "Show the panel",
+  "type": "bool",
+  "value": true
+ },
+ "panelposition": {
+  "order": 31,
+  "text": "Panel position",
+  "type": "combo",
+  "value": "br",
+  "condition": "showpanel.value == true",
+  "options": [
+   {
+    "label": "Bottom right",
+    "value": "br"
+   },
+   {
+    "label": "Bottom left",
+    "value": "bl"
+   },
+   {
+    "label": "Top right",
+    "value": "tr"
+   },
+   {
+    "label": "Top left",
+    "value": "tl"
+   }
+  ]
+ },
+ "panelscale": {
+  "order": 32,
+  "text": "Panel scale, %",
+  "type": "slider",
+  "min": 60,
+  "max": 180,
+  "value": 100,
+  "condition": "showpanel.value == true"
+ },
+ "terminal": {
+  "order": 33,
+  "text": "Dispatch terminal",
+  "type": "bool",
+  "value": true
+ },
+ "terminalposition": {
+  "order": 34,
+  "text": "Terminal position",
+  "type": "combo",
+  "value": "tl",
+  "condition": "terminal.value == true",
+  "options": [
+   {
+    "label": "Top left",
+    "value": "tl"
+   },
+   {
+    "label": "Top right",
+    "value": "tr"
+   },
+   {
+    "label": "Bottom left",
+    "value": "bl"
+   },
+   {
+    "label": "Bottom right",
+    "value": "br"
+   }
+  ]
+ },
+ "uicolor": {
+  "order": 35,
+  "text": "Panel colour",
+  "type": "color",
+  "value": "1 0.729 0.322"
+ },
+ "savestate": {
+  "order": 50,
+  "text": "Remember units out on calls",
+  "type": "bool",
+  "value": true
+ },
+ "townname": {
+  "order": 51,
+  "text": "Town name",
+  "type": "textinput",
+  "value": "FAIRHAVEN"
+ }
+};

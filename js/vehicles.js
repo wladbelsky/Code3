@@ -1,0 +1,147 @@
+'use strict';
+/* ===== Vehicle models (1 unit = 1 m). Every builder returns a group facing +x, wheels on y = 0 =====
+   Civilian cars (parked in the lots and driveways, later the traffic) and the apparatus of the units.             */
+const CAR_COLORS = [0xd8d8d4, 0x1c1e22, 0x8a8e94, 0x7a1e1e, 0x1e3a6a, 0x2f4a36, 0xb8b2a2, 0x4a4e56, 0x9a6a2a, 0xe8e6e0];
+const GLASS = 0x22303c, TIRE = 0x16171a, RIM = 0x9a9ca0;
+function wheels(g, xs, zs, r, w) {
+  for (const x of xs) for (const z of zs) { const t = cyl(g, r, r, w, 10, TIRE, x, r, z); t.rotation.x = Math.PI / 2; }
+}
+/* kind: sedan / suv / pickup / van */
+const CAR_SPECS = {
+  sedan:  { L: 4.7, W: 1.82, body: 0.72, cab: [2.5, 0.62, 0.15], r: 0.32 },
+  suv:    { L: 4.9, W: 1.95, body: 0.95, cab: [2.9, 0.75, -0.1], r: 0.38 },
+  pickup: { L: 5.6, W: 2.0, body: 0.95, cab: [1.9, 0.8, 0.7], r: 0.4, bed: true },
+  van:    { L: 5.2, W: 2.0, body: 1.0, cab: [3.9, 1.0, -0.4], r: 0.36 }
+};
+function carModel(kind, color) {
+  const S = CAR_SPECS[kind], g = new THREE.Group(), y0 = S.r * 0.9, [cl, ch, cx] = S.cab;
+  box(g, S.L, S.body, S.W, color, 0, y0 + S.body / 2, 0);
+  taper(g, cl, ch, S.W * 0.92, GLASS, cx, y0 + S.body + ch / 2, 0, 0.78, 0.86, -0.12);
+  box(g, cl * 0.74, 0.06, S.W * 0.8, color, cx - 0.12, y0 + S.body + ch + 0.02, 0);   // roof
+  if (S.bed) box(g, 2.2, 0.35, S.W * 0.96, color, -S.L / 2 + 1.15, y0 + S.body + 0.17, 0);
+  box(g, 0.08, 0.16, S.W * 0.7, 0xe8e4d0, S.L / 2, y0 + S.body * 0.62, 0);           // headlights band
+  box(g, 0.08, 0.14, S.W * 0.74, 0x8a1010, -S.L / 2, y0 + S.body * 0.66, 0);          // tail lights
+  wheels(g, [S.L * 0.32, -S.L * 0.32], [S.W / 2 - 0.12, -S.W / 2 + 0.12], S.r, 0.26);
+  g.userData.len = S.L; g.userData.wid = S.W;
+  return g;
+}
+const randomCar = () => carModel(pick(['sedan', 'sedan', 'sedan', 'suv', 'suv', 'pickup', 'van']), pick(CAR_COLORS));
+
+/* ===== Apparatus: engine, ladder, rescue, medic, chief, patrol =====
+   Every builder returns { group, bars, len, wid, dyn?, aerial? }: bars = the light bar segments ({ mesh, col, ph }:
+   colour 'r' / 'b' / 'w' / 'a', flash phase 0 / 1) — units.js swaps their materials (LB_MATS) as they flash; the
+   static rest is merged by the unit (mergeStatic) with the segments and the moving parts (dyn) kept dynamic. */
+const FIRE_RED = 0xb3161a, FIRE_WHITE = 0xeeece6, CHROME = 0xc4c8cc, DIAMOND = 0x9a9ea2, CAB_GLASS = 0x1c2630;
+const LB_MATS = {
+  r: [M(0x5a1010), M(0xff3020, { emissive: 0xff2010 })], b: [M(0x101a5a), M(0x3060ff, { emissive: 0x2050ff })],
+  w: [M(0x8a8a86), M(0xffffff, { emissive: 0xfff4e0 })], a: [M(0x6a4a10), M(0xffb020, { emissive: 0xff9a10 })]
+};
+/* a light bar across the roof at x (along the vehicle), y (its base), w wide (z); cols = segment colours left → right */
+function lightBar(g, bars, x, y, w, cols, depth) {
+  const d = depth || 0.3, sw = w / cols.length;
+  box(g, d + 0.04, 0.08, w + 0.04, 0x222326, x, y + 0.04, 0);
+  cols.forEach((c, i) => { const m = box(g, d, 0.14, sw - 0.03, LB_MATS[c][0], x, y + 0.15, -w / 2 + sw * (i + 0.5)); bars.push({ mesh: m, col: c, ph: i < cols.length / 2 ? 0 : 1 }); });
+}
+/* a corner / side flasher (a small box) */
+function flasher(g, bars, x, y, z, c, ph, sx, sy, sz) { const m = box(g, sx || 0.12, sy || 0.22, sz || 0.22, LB_MATS[c][0], x, y, z); bars.push({ mesh: m, col: c, ph }); return m; }
+/* a fire apparatus cab (front at x = fx, back at fx − 2.4): windscreen, side windows, white roof band, light bar */
+function fireCab(g, bars, fx, W, h) {
+  const bx = fx - 1.2, y0 = 0.95;
+  box(g, 2.4, h - y0, W, FIRE_RED, bx, y0 + (h - y0) / 2, 0);
+  box(g, 2.44, 0.22, W + 0.02, FIRE_WHITE, bx, h - 0.11, 0);
+  box(g, 0.06, 0.95, W - 0.3, CAB_GLASS, fx + 0.01, h - 0.85, 0);
+  for (const sd of [-1, 1]) { box(g, 1.7, 0.85, 0.05, CAB_GLASS, bx + 0.2, h - 0.85, sd * (W / 2 + 0.01)); box(g, 0.06, 1.0, 0.05, 0x222326, bx - 0.3, h - 0.85, sd * (W / 2 + 0.02)); }
+  box(g, 0.25, 0.4, W + 0.1, CHROME, fx + 0.1, 0.75, 0);                        // bumper
+  box(g, 0.05, 0.5, W * 0.6, 0x3a3c3e, fx + 0.02, 1.35, 0);                      // grille
+  lightBar(g, bars, bx + 0.6, h, W * 0.86, ['r', 'r', 'w', 'r', 'r']);
+  for (const sd of [-1, 1]) flasher(g, bars, fx + 0.02, 1.15, sd * (W / 2 - 0.25), sd < 0 ? 'r' : 'w', sd < 0 ? 0 : 1);
+}
+function stripe(g, x0, x1, y, W, c) { for (const sd of [-1, 1]) box(g, x1 - x0, 0.16, 0.03, c, (x0 + x1) / 2, y, sd * (W / 2 + 0.01)); }
+function compartments(g, x0, x1, y0, y1, W, n) {   // roll-up compartment doors along both sides
+  const w = (x1 - x0) / n;
+  for (let i = 0; i < n; i++) for (const sd of [-1, 1]) box(g, w - 0.12, y1 - y0, 0.04, CHROME, x0 + w * (i + 0.5), (y0 + y1) / 2, sd * (W / 2 + 0.01));
+}
+function axle(g, x, W, r) { wheels(g, [x], [W / 2 - 0.25, -W / 2 + 0.25], r, 0.36); }
+function engineModel() {
+  const g = new THREE.Group(), bars = [], L = 10.2, W = 2.5, fx = L / 2;
+  fireCab(g, bars, fx, W, 3.1);
+  box(g, L - 2.4, 1.95, W, FIRE_RED, -1.2, 0.95 + 0.97, 0);                      // body
+  compartments(g, -4.7, 2.3, 1.05, 2.45, W, 4);
+  stripe(g, -L / 2, fx - 2.4, 2.65, W, FIRE_WHITE);
+  box(g, 5.4, 0.35, W - 0.4, 0x3a3434, -2.2, 3.05, 0);                           // hose bed
+  for (const sd of [-1, 1]) box(g, 6.2, 0.1, 0.12, DIAMOND, -1.6, 3.05, sd * (W / 2 - 0.1));
+  box(g, 5.6, 0.12, 0.35, 0xb8b8b4, -1.4, 3.3, -W / 2 + 0.3);                   // ground ladders on the rack
+  box(g, 0.3, 1.9, W, DIAMOND, -L / 2 + 0.15, 1.9, 0);                           // tailboard
+  for (const sd of [-1, 1]) flasher(g, bars, -L / 2 - 0.02, 2.75, sd * (W / 2 - 0.2), sd < 0 ? 'r' : 'a', sd < 0 ? 0 : 1);
+  axle(g, fx - 1.2, W, 0.55); axle(g, -2.8, W, 0.55);
+  return { group: g, bars, len: L, wid: W };
+}
+/* rear-mount aerial: the turntable over the back axles, the ladder lying forward over the cab (aerial: yaw / pitch / fly) */
+function ladderModel() {
+  const g = new THREE.Group(), bars = [], L = 12.4, W = 2.5, fx = L / 2;
+  fireCab(g, bars, fx, W, 3.1);
+  box(g, L - 2.4, 1.55, W, FIRE_RED, -1.2, 0.95 + 0.77, 0);
+  compartments(g, -5.4, 3.3, 1.05, 2.3, W, 5);
+  stripe(g, -L / 2, fx - 2.4, 2.4, W, FIRE_WHITE);
+  for (const sd of [-1, 1]) box(g, 0.9, 0.25, 0.5, DIAMOND, -4.0, 0.8, sd * (W / 2 + 0.25));   // outrigger housings
+  const yawG = new THREE.Group(); yawG.position.set(-4.4, 2.5, 0); g.add(yawG);
+  cyl(yawG, 1.05, 1.1, 0.35, 12, 0x5a5c60, 0, 0.17, 0);
+  box(yawG, 0.9, 1.0, 0.7, FIRE_RED, -0.2, 0.7, 0.75);                           // turntable console
+  const pitchG = new THREE.Group(); pitchG.position.set(0.2, 0.75, 0); yawG.add(pitchG);
+  for (const sd of [-1, 1]) box(pitchG, 10.4, 0.42, 0.08, 0xd8dadc, 5.1, 0.2, sd * 0.55);
+  for (let x = 0.4; x < 10.4; x += 0.75) box(pitchG, 0.05, 0.05, 1.1, 0xbcbec0, x, 0.05, 0);
+  const fly = new THREE.Group(); pitchG.add(fly);
+  for (const sd of [-1, 1]) box(fly, 9.6, 0.3, 0.06, 0xe8eaec, 5.4, 0.3, sd * 0.42);
+  box(fly, 0.5, 0.6, 1.1, 0x5a5c60, 10.0, 0.3, 0);                               // tip
+  axle(g, fx - 1.2, W, 0.55); axle(g, -3.4, W, 0.55); axle(g, -4.7, W, 0.55);
+  for (const sd of [-1, 1]) flasher(g, bars, -L / 2 - 0.02, 2.3, sd * (W / 2 - 0.2), sd < 0 ? 'r' : 'a', sd < 0 ? 0 : 1);
+  return { group: g, bars, len: L, wid: W, aerial: { yawG, pitchG, fly }, dyn: [yawG, pitchG, fly] };
+}
+function rescueModel() {
+  const g = new THREE.Group(), bars = [], L = 10.4, W = 2.55, fx = L / 2;
+  fireCab(g, bars, fx, W, 3.15);
+  box(g, L - 2.5, 2.5, W, FIRE_RED, -1.25, 0.95 + 1.25, 0);
+  compartments(g, -4.9, 2.4, 1.05, 3.0, W, 5);
+  box(g, L - 2.5, 0.3, W + 0.02, FIRE_WHITE, -1.25, 3.3, 0);
+  box(g, 3.0, 0.5, 1.6, 0x5a5c60, -2.4, 3.65, 0);                                // light tower / gear on the roof
+  for (const sd of [-1, 1]) { flasher(g, bars, -L / 2 - 0.02, 3.0, sd * (W / 2 - 0.2), sd < 0 ? 'r' : 'w', sd < 0 ? 0 : 1); flasher(g, bars, -L / 2 + 0.3, 3.55, sd * (W / 2 - 0.15), 'r', sd < 0 ? 1 : 0, 0.24, 0.2, 0.16); }
+  axle(g, fx - 1.2, W, 0.55); axle(g, -3.0, W, 0.55);
+  return { group: g, bars, len: L, wid: W };
+}
+/* Type I ambulance: a truck cab and a box module, white with a red stripe; light bar and box corner lights */
+function medicModel() {
+  const g = new THREE.Group(), bars = [], L = 7.2, W = 2.4, fx = L / 2;
+  box(g, 1.7, 1.15, W - 0.1, 0xf2f2ee, fx - 0.85, 1.25, 0);                     // hood
+  box(g, 1.4, 1.1, W - 0.1, 0xf2f2ee, fx - 2.4, 2.0, 0);                         // cab
+  taper(g, 0.5, 0.75, W - 0.2, CAB_GLASS, fx - 1.55, 2.12, 0, 1, 0.95, -0.15);
+  for (const sd of [-1, 1]) box(g, 0.9, 0.6, 0.05, CAB_GLASS, fx - 2.4, 2.2, sd * (W / 2 - 0.04));
+  box(g, 0.2, 0.3, W, CHROME, fx + 0.05, 0.75, 0);
+  const bx0 = -L / 2, bx1 = fx - 3.1;
+  box(g, bx1 - bx0, 2.35, W, 0xf4f4f0, (bx0 + bx1) / 2, 0.85 + 1.17, 0);         // module
+  stripe(g, bx0, fx, 1.45, W, 0xc81e1e); stripe(g, bx0, bx1, 2.95, W, 0xc81e1e);
+  for (const sd of [-1, 1]) box(g, 0.6, 0.6, 0.04, 0x2a5ab0, bx0 + 1.6, 2.2, sd * (W / 2 + 0.02));   // the side marking (a blue square)
+  box(g, 0.05, 1.7, 1.6, 0xe8e8e4, bx0 - 0.01, 1.6, 0);                          // rear doors
+  lightBar(g, bars, fx - 2.4, 2.55, W * 0.8, ['r', 'r', 'w', 'r', 'r'], 0.25);
+  for (const sd of [-1, 1]) {
+    flasher(g, bars, bx1 + 0.02, 3.05, sd * (W / 2 - 0.15), 'r', sd < 0 ? 0 : 1, 0.12, 0.2, 0.2);
+    flasher(g, bars, bx0 - 0.02, 3.05, sd * (W / 2 - 0.15), 'r', sd < 0 ? 1 : 0, 0.12, 0.2, 0.2);
+    flasher(g, bars, bx0 - 0.03, 2.75, sd * 0.2, 'a', sd < 0 ? 0 : 1, 0.1, 0.16, 0.18);
+  }
+  wheels(g, [fx - 1.1, -1.9], [W / 2 - 0.22, -W / 2 + 0.22], 0.45, 0.32);
+  return { group: g, bars, len: L, wid: W };
+}
+function chiefModel() {
+  const g = carModel('suv', FIRE_RED), bars = [];
+  for (const sd of [-1, 1]) box(g, 4.0, 0.14, 0.02, FIRE_WHITE, 0, 0.95, sd * 0.99);
+  lightBar(g, bars, -0.1, 0.342 + 0.95 + 0.75 + 0.06, 1.4, ['r', 'r', 'w', 'r']);
+  return { group: g, bars, len: 4.9, wid: 1.95 };
+}
+/* patrol car: black with white doors, a red / blue bar */
+function patrolModel() {
+  const g = carModel('sedan', 0x15171a), bars = [], y = 0.32 * 0.9;
+  for (const sd of [-1, 1]) box(g, 2.3, 0.66, 0.03, 0xf2f2f0, 0.1, y + 0.37, sd * 0.925);
+  box(g, 0.3, 0.45, 1.6, 0x15171a, 2.45, 0.6, 0);                                 // push bumper
+  lightBar(g, bars, 0, y + 0.72 + 0.62 + 0.06, 1.5, ['r', 'r', 'b', 'b']);
+  return { group: g, bars, len: 4.7, wid: 1.82 };
+}
+const UNIT_MODELS = { engine: engineModel, ladder: ladderModel, rescue: rescueModel, medic: medicModel, chief: chiefModel, patrol: patrolModel };

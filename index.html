@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Code 3</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="stylesheet" href="style.css?v=4">
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="splash"><div class="t">◆ CODE 3</div><div class="s">CONNECTING TO CAD…</div><div class="bar"><i></i></div></div>
+<div id="panel" class="pos-br">
+  <div class="hdr">
+    <span class="title">◆ FAIRHAVEN · DISPATCH</span>
+    <button id="collapse" title="Collapse">–</button>
+  </div>
+  <div class="body">
+    <div class="info">
+      <div><span class="lbl">TIME</span><span id="clock">--:--</span></div>
+      <div><span class="lbl">LIGHT</span><span id="daystate">—</span></div>
+      <div><span class="lbl">LOAD</span><span id="load">—</span></div>
+    </div>
+    <div id="meter"></div>
+  </div>
+</div>
+<script src="js/three.min.js"></script>
+<script src="js/core.js?v=4"></script>
+<script src="js/flightpath.js?v=4"></script>
+<script src="js/models.js?v=4"></script>
+<script src="js/vehicles.js?v=4"></script>
+<script src="js/city.js?v=4"></script>
+<script src="js/terrain.js?v=4"></script>
+<script src="js/effects.js?v=4"></script>
+<script src="js/roads.js?v=4"></script>
+<script src="js/units.js?v=4"></script>
+<script src="js/main.js?v=4"></script>
+<script src="js/properties.js?v=4"></script>
+<script src="js/settings.js?v=4"></script>
+<script>
+  // Audio listener is registered at the end of <body>, as the Wallpaper Engine docs recommend
+  if (window.wallpaperRegisterAudioListener) {
+    window.wallpaperRegisterAudioListener(onAudio);
+  } else {
+    AUD.demo = true; if (new URLSearchParams(location.search).get('demo') === '1') DEMO.on = true;
+    setInterval(demoAudio, 33); // preview in a regular browser
+  }
+</script>
+</body>
+</html>

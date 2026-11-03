@@ -1,0 +1,12 @@
+{
+  "name": "code3-tests",
+  "private": true,
+  "description": "Automated tests for the Code 3 wallpaper (the wallpaper itself has no build step)",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "gifenc": "1.0.3"
+  }
+}
