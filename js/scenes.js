@@ -1,0 +1,189 @@
+'use strict';
+/* ===== Scenes on site: what a call looks like where it happens =====
+   SCENES.open(call) when a call comes in, close() when it is closed (whatever it placed goes back to its pool).
+   - FireScene (structure): flames and black smoke out of the front windows and the roof; it grows (heat 0.35 → 1) until
+     water is on it: the engine's line from the front yard, the ladder's aerial raised over the roof (both once the unit
+     has been on scene a few seconds), each taking the heat down; knocked down at 0, then white steam for a while.
+     `ready` (the dispatcher may start clearing): out for 20 s.
+   - CarFireScene (vehicle): a car at the curb burning from the hood until the engine's water puts it out; charred after.
+   - CrashScene (mva): two cars at the curb near the crossing, at angles, steam from one radiator, cones.
+   Crews (CREW): figures from one InstancedMesh pool stand by a unit while it is on scene (on the sidewalk side), the
+   nozzle crew in the yard of a burning house. Everything is pooled: nothing is built per call.
+   Particles: FX.fire (additive flames), FX.smoke (black smoke, white steam), FX.water (the streams: ballistic arcs). */
+const SCENES = {
+  list: [],
+  open(c) {
+    const k = c.type.kind, S = k === 'structure' && c.site.house ? new FireScene(c) : k === 'vehicle' ? new CarFireScene(c) : k === 'mva' ? new CrashScene(c) : null;
+    if (S) { c.scene = S; this.list.push(S); }
+  },
+  update(dt) {
+    for (const s of this.list) s.update(dt);
+    for (let i = this.list.length - 1; i >= 0; i--) if (this.list[i].done) this.list.splice(i, 1);
+    CREW.update(dt);
+  },
+  reset() { for (const s of this.list) s.close(true); this.list.length = 0; CREW.clear(); }
+};
+/* the direction a site's units drive along its curb (sign along the street) and the curb's offset from the centre line */
+const siteSg = s => DIRV[s.ax === 'ew' ? (s.side > 0 ? 'E' : 'W') : (s.side > 0 ? 'N' : 'S')][s.ax === 'ew' ? 0 : 1];
+const siteXZ = (s, a, off) => s.ax === 'ew' ? [a, s.at + s.side * off] : [s.at + s.side * off, a];
+const _sp = new V3(), _sv = new V3(), _st = new V3();
+/* a water arc from p to t (stream particles at ~rate/s; the arc's shape from a horizontal speed) */
+function waterArc(p, t, acc, dt, rate) {
+  acc.w = (acc.w || 0) + dt * rate;
+  while (acc.w > 1) {
+    acc.w--;
+    const dx = t.x - p.x, dz = t.z - p.z, d = Math.hypot(dx, dz), vh = 13, tt = Math.max(0.25, d / vh), dy = t.y - p.y;
+    _sv.set(dx / tt, (dy + 4.9 * tt * tt) / tt, dz / tt).multiplyScalar(rand(0.96, 1.04));
+    FX.water.spawn(p, { v: _sv, rise: -9.8, s0: 0.22, s1: 0.9, life: tt * 1.05, a0: 0.75, color: 0xdcecff });
+  }
+}
+
+/* ---- the house fire ---- */
+class FireScene {
+  constructor(c) {
+    this.c = c; const h = this.h = c.site.house; this.heat = 0.35; this.out = false; this.outAt = 0; this.done = false; this.acc = {}; this.water = 0;
+    const R = h.rot ? -1 : 1, wp = (lx, ly, lz) => new V3(h.x + lx * R, ly, h.z + lz * R);
+    // emitters: front windows (both storeys), the roof
+    this.em = [wp(-h.w / 4, h.h * 0.55, h.d / 2 + 0.3), wp(h.w / 4, h.h * 0.8, h.d / 2 + 0.3), wp(-h.w / 5, h.h + 1.4, 0), wp(h.w / 5, h.h + 1.0, -h.d / 5)];
+    this.target = wp(0, h.h * 0.6, h.d / 2);                // where the streams aim
+    this.yard = wp(0.8, 0, h.d / 2 + 4);                  // the nozzle crew
+    this.crew = null;
+  }
+  get ready() { return this.out && T - this.outAt > 20; }
+  update(dt) {
+    if (this.closed) { this.done = true; return; }
+    // the streams: an engine's line and the ladder's aerial, from a few seconds after they arrive
+    let streams = 0;
+    for (const u of this.c.units) {
+      if (u.callRef !== this.c || u.state !== 'on_scene' || u.t < 6 || this.out) { if (u.model.aerial && u.callRef === this.c) u.aerialWant = this.out ? 0 : u.aerialWant; continue; }
+      if (u.type === 'engine') {
+        if (!this.crew) { this.crew = CREW.take('fire', this.yard.x, this.yard.z, Math.atan2(this.target.x - this.yard.x, this.target.z - this.yard.z)); }
+        _sp.set(this.yard.x, 1.2, this.yard.z); waterArc(_sp, this.target, this.acc.e || (this.acc.e = {}), dt, 26); streams++;
+      } else if (u.type === 'ladder') {
+        u.aimAerial(this.em[2]);
+        if (u.aerialK > 0.98) { u.aerialTip(_sp); _st.copy(this.em[2]).setY(this.em[2].y + 0.5); waterArc(_sp, _st, this.acc.l || (this.acc.l = {}), dt, 30); streams++; }
+      }
+    }
+    if (!this.out) {
+      this.heat = clamp(this.heat + dt * (streams ? -0.009 * streams : 0.01), 0, 1);
+      if (this.heat <= 0) { this.out = true; this.outAt = T; if (this.crew != null) { CREW.drop(this.crew); this.crew = null; } }
+    }
+    // flames and black smoke by the heat; after it, steam fading over a minute
+    const k = this.heat, steam = this.out ? Math.max(0, 1 - (T - this.outAt) / 60) : streams ? 0.6 : 0;
+    this.acc.f = (this.acc.f || 0) + dt * 22 * k; this.acc.s = (this.acc.s || 0) + dt * (5 * k + 3 * steam);
+    while (this.acc.f > 1) {
+      this.acc.f--; const e = this.em[Math.floor(Math.random() * (k > 0.6 ? 4 : 3))];
+      _sp.copy(e).add(_sv.set(rand(-0.8, 0.8), rand(-0.2, 0.4), rand(-0.8, 0.8)));
+      FX.fire.spawn(_sp, { v: _sv.set(WIND.x * 0.4, rand(2.5, 4.5), WIND.z * 0.4), s0: rand(1.2, 2) * (0.6 + k * 0.6), s1: rand(2.2, 3.4) * (0.6 + k * 0.6), life: rand(0.6, 1.0), a0: 0.9, color: Math.random() < 0.5 ? 0xffa040 : 0xff6a20 });
+    }
+    while (this.acc.s > 1) {
+      this.acc.s--; const black = Math.random() < 5 * k / (5 * k + 3 * steam + 1e-6), e = this.em[2 + Math.floor(Math.random() * 2)];
+      _sp.copy(e).add(_sv.set(rand(-1, 1), 1.5, rand(-1, 1)));
+      FX.smoke.spawn(_sp, { v: _sv.set(WIND.x * 0.9, rand(2.5, 3.5), WIND.z * 0.9), drag: 0.08, s0: 2.5, s1: black ? 11 : 8, life: rand(6, 9), a0: black ? 0.6 : 0.35, color: black ? 0x2a2622 : 0xd8d8d4 });
+    }
+  }
+  close() {
+    this.closed = true; if (this.crew != null) { CREW.drop(this.crew); this.crew = null; }
+    for (const u of this.c.units) if (u.model.aerial) u.aerialWant = 0;
+  }
+}
+
+/* ---- pooled props: crash / burning cars, cones ---- */
+const PROPS = {
+  cars: null, burnt: null, cones: null,
+  build() {
+    this.cars = [0x8a1e1e, 0x1e3a6a, 0xd8d8d4, 0x2f4a36].map((c, i) => { const g = carModel(i % 2 ? 'suv' : 'sedan', c); mergeStatic(g, []); g.visible = false; scene.add(g); return { g, used: false }; });
+    this.burnt = [0, 1].map(() => { const g = carModel('sedan', 0x1e1c1a); mergeStatic(g, []); g.visible = false; scene.add(g); return { g, used: false }; });
+    const cg = new THREE.ConeGeometry(0.22, 0.7, 8); cg.translate(0, 0.35, 0);
+    this.cones = new THREE.InstancedMesh(cg, M(0xff6a10), 24); this.cones.count = 0; this.cones.castShadow = true; this.cones.frustumCulled = false; scene.add(this.cones);
+    this.coneList = [];
+  },
+  car(list) { const c = list.find(c => !c.used); if (!c) return null; c.used = true; c.g.visible = true; return c; },
+  put(c) { if (!c) return; c.used = false; c.g.visible = false; },
+  cone(x, z) { const c = [x, z]; this.coneList.push(c); this.layCones(); return c; },
+  dropCones(list) { this.coneList = this.coneList.filter(c => !list.includes(c)); this.layCones(); },
+  layCones() { const m = new THREE.Matrix4(); this.coneList.slice(0, 24).forEach(([x, z], i) => this.cones.setMatrixAt(i, m.makeTranslation(x, 0, z))); this.cones.count = Math.min(24, this.coneList.length); this.cones.instanceMatrix.needsUpdate = true; }
+};
+
+/* ---- a car fire at the curb, ahead of where the engine pulls up ---- */
+class CarFireScene {
+  constructor(c) {
+    this.c = c; const s = c.site, sg = siteSg(s); this.acc = {}; this.heat = 0.6; this.out = false; this.done = false;
+    this.car = PROPS.car(PROPS.cars);
+    const [x, z] = siteXZ(s, s.a + sg * 10, ROAD_W / 2 + 0.6), h = s.ax === 'ew' ? (sg > 0 ? 0 : Math.PI) : (sg > 0 ? -Math.PI / 2 : Math.PI / 2);
+    this.pos = new V3(x, 0, z); this.yaw = h;
+    if (this.car) { this.car.g.position.set(x, 0, z); this.car.g.rotation.set(0, h, 0); }
+    this.hood = new V3(x + Math.cos(h) * 1.6, 1.1, z - Math.sin(h) * 1.6);
+  }
+  get ready() { return this.out; }
+  update(dt) {
+    if (this.closed) { this.done = true; return; }
+    let streams = 0;
+    for (const u of this.c.units) if (u.callRef === this.c && u.type === 'engine' && u.state === 'on_scene' && u.t > 5 && !this.out) {
+      const r = Math.atan2(this.pos.z - u.pos.z, this.pos.x - u.pos.x); _sp.set(u.pos.x + Math.cos(r) * 4, 1.1, u.pos.z + Math.sin(r) * 4);
+      waterArc(_sp, this.hood, this.acc, dt, 20); streams++;
+    }
+    if (!this.out) {
+      this.heat = clamp(this.heat + dt * (streams ? -0.02 : 0.004), 0, 1);
+      if (this.heat <= 0) { this.out = true; this.outAt = T; const b = PROPS.car(PROPS.burnt); if (b) { b.g.position.copy(this.car ? this.car.g.position : this.pos); b.g.rotation.set(0, this.yaw, 0); PROPS.put(this.car); this.car = b; } }
+    }
+    const k = this.heat, steam = this.out ? Math.max(0, 1 - (T - this.outAt) / 30) : 0;
+    this.acc.f = (this.acc.f || 0) + dt * 14 * k; this.acc.s = (this.acc.s || 0) + dt * (3 * k + 2 * steam);
+    while (this.acc.f > 1) { this.acc.f--; _sp.copy(this.hood).add(_sv.set(rand(-0.5, 0.5), 0, rand(-0.5, 0.5))); FX.fire.spawn(_sp, { v: _sv.set(WIND.x * 0.3, rand(2, 3.5), WIND.z * 0.3), s0: 0.9, s1: 1.9, life: rand(0.5, 0.8), a0: 0.9, color: 0xff8a30 }); }
+    while (this.acc.s > 1) { this.acc.s--; const black = Math.random() < 3 * k / (3 * k + 2 * steam + 1e-6); FX.smoke.spawn(_sp.copy(this.hood).setY(2), { v: _sv.set(WIND.x * 0.9, rand(2, 3), WIND.z * 0.9), drag: 0.08, s0: 1.5, s1: 6, life: rand(4, 6), a0: black ? 0.55 : 0.3, color: black ? 0x2a2622 : 0xd8d8d4 }); }
+  }
+  close() { this.closed = true; PROPS.put(this.car); this.car = null; }
+}
+
+/* ---- a crash near the crossing: two cars at the curb at angles, steam, cones ---- */
+class CrashScene {
+  constructor(c) {
+    this.c = c; const s = c.site, sg = siteSg(s), cross = (s.ax === 'ew' ? CITY_LAYOUT.avenues.map(v => v.x) : CITY_LAYOUT.streets.map(v => v.z)).reduce((b, v) => Math.abs(v - s.a) < Math.abs(b - s.a) ? v : b);
+    const away = Math.sign(s.a - cross) || 1, base = s.ax === 'ew' ? (sg > 0 ? 0 : Math.PI) : (sg > 0 ? -Math.PI / 2 : Math.PI / 2);
+    this.done = false; this.acc = {}; this.cars = []; this.cones = [];
+    for (const [d, off, turn] of [[11, ROAD_W / 2 + 0.4, 0.5], [17, ROAD_W / 2 + 0.9, -0.35]]) {
+      const car = PROPS.car(PROPS.cars); if (!car) continue;
+      const [x, z] = siteXZ(s, cross + away * d, off); car.g.position.set(x, 0, z); car.g.rotation.set(0, base + turn, 0.04); this.cars.push(car);
+    }
+    const [sx, sz] = siteXZ(s, cross + away * 11, ROAD_W / 2 + 0.4); this.steam = new V3(sx, 1, sz);
+    for (const d of [7, 9, 21]) { const [x, z] = siteXZ(s, cross + away * d, ROAD_W / 2 - 1.2); this.cones.push(PROPS.cone(x, z)); }
+  }
+  get ready() { return true; }
+  update(dt) {
+    if (this.closed) { this.done = true; return; }
+    this.acc.s = (this.acc.s || 0) + dt * (T - this.c.t < 120 ? 1.5 : 0);
+    while (this.acc.s > 1) { this.acc.s--; FX.smoke.spawn(this.steam, { v: _sv.set(WIND.x * 0.6, rand(1.2, 2), WIND.z * 0.6), drag: 0.1, s0: 0.8, s1: 3.5, life: rand(3, 4), a0: 0.35, color: 0xe0e0dc }); }
+  }
+  close() { this.closed = true; for (const c of this.cars) PROPS.put(c); this.cars.length = 0; PROPS.dropCones(this.cones); this.cones.length = 0; }
+}
+
+/* ===== Crews: figures standing by their unit on scene (one InstancedMesh, colour per service) ===== */
+const CREW_COLORS = { fire: 0xc8a050, ems: 0x2c4470, pd: 0x1c2638 };
+const CREW = {
+  mesh: null, n: 60, used: [], byUnit: new Map(),
+  build() {
+    const geo = vegGeometry([[new THREE.CylinderGeometry(0.2, 0.24, 1.15, 6), 0xffffff, 0, 0.58, 0], [new THREE.SphereGeometry(0.17, 6, 4), 0xe8d8c8, 0, 1.38, 0], [new THREE.CylinderGeometry(0.22, 0.22, 0.12, 6), 0xffffff, 0, 1.53, 0]]);
+    this.mesh = new THREE.InstancedMesh(geo, VEG_MAT, this.n); this.mesh.castShadow = true; this.mesh.frustumCulled = false;
+    const zero = new THREE.Matrix4().makeScale(0, 0, 0); for (let i = 0; i < this.n; i++) { this.mesh.setMatrixAt(i, zero); this.mesh.setColorAt(i, new THREE.Color()); this.used.push(false); }
+    scene.add(this.mesh);
+  },
+  take(svc, x, z, yaw) {
+    const i = this.used.indexOf(false); if (i < 0) return null; this.used[i] = true;
+    const m = new THREE.Matrix4().makeRotationY(yaw || 0).setPosition(x, 0, z), c = new THREE.Color(CREW_COLORS[svc]);
+    this.mesh.setMatrixAt(i, m); this.mesh.setColorAt(i, c); this.mesh.instanceMatrix.needsUpdate = true; this.mesh.instanceColor.needsUpdate = true;
+    return i;
+  },
+  drop(i) { if (i == null || !this.used[i]) return; this.used[i] = false; this.mesh.setMatrixAt(i, new THREE.Matrix4().makeScale(0, 0, 0)); this.mesh.instanceMatrix.needsUpdate = true; },
+  clear() { for (let i = 0; i < this.n; i++) this.drop(i); this.byUnit.clear(); },
+  /* a unit standing on scene gets its crew beside it on the sidewalk side (2 for fire / EMS, 1 for police); gone when it leaves */
+  update() {
+    for (const u of UNITS) {
+      const has = this.byUnit.get(u), on = u.state === 'on_scene' && !u.way && u.t > 3;
+      if (on && !has) {
+        const h = u.pos.h, rx = -Math.sin(h), rz = Math.cos(h), cx = Math.cos(h), cz = Math.sin(h), n = u.spec.svc === 'pd' ? 1 : 2, list = [];
+        for (let k = 0; k < n; k++) { const along = (k - (n - 1) / 2) * 2.2 + rand(-0.4, 0.4), side = u.wid / 2 + 1.0 + rand(0, 0.6); list.push(this.take(u.spec.svc, u.pos.x + rx * side + cx * along, u.pos.z + rz * side + cz * along, rand(0, TAU))); }
+        this.byUnit.set(u, list);
+      } else if (!on && has) { has.forEach(i => this.drop(i)); this.byUnit.delete(u); }
+    }
+  }
+};

@@ -23,12 +23,14 @@ const UNIT_TYPES = {
 const ROSTER = [['engine', 'ENGINE 12', { bay: 0 }], ['ladder', 'LADDER 12', { bay: 1 }], ['rescue', 'RESCUE 12', { bay: 2 }],
   ['medic', 'MEDIC 12', { bay: 3 }], ['medic', 'MEDIC 14', { bay: 4 }], ['chief', 'BATTALION 1', { bay: 5 }],
   ['patrol', '2-ADAM-11', { stall: 3 }], ['patrol', '2-ADAM-12', { stall: 4 }], ['patrol', '2-ADAM-14', { stall: 5 }], ['patrol', '2-ADAM-15', { stall: 6 }]];   // (stalls clear of the lot's west edge: they back out westward)
-const UNIT_STATES = { quarters: 'IN QTRS', turnout: 'TURNOUT', pullout: 'TURNOUT', responding: 'ENROUTE', on_scene: 'ON SCENE', away: 'ON SCENE', returning: 'RETURNING', parking: 'RETURNING' };
+const UNIT_STATES = { quarters: 'IN QTRS', turnout: 'TURNOUT', pullout: 'TURNOUT', responding: 'ENROUTE', on_scene: 'ON SCENE', away: 'ON SCENE', returning: 'RETURNING', parking: 'RETURNING', transporting: 'TRANSPORT', at_hospital: 'AT HOSP' };
+/* the ER: in from Main St at x 72, under the canopy heading east (two places), out at x 96 */
+const HOSP = { inX: 72, outX: 96, z: 31, slots: [{ x: 88, unit: null }, { x: 80, unit: null }] };
 const MAIN_Z = 50;
 let UNITS = [];
 const ZONES = { apron: null, yard: null, lot: null };
 const _ua = { x: 0, z: 0, h: 0, v: 0 }, _ub = { x: 0, z: 0, h: 0, v: 0 };
-const YIELD_PTS = [];
+const YIELD_PTS = [], _av = new V3();
 const avenueX = () => CITY_LAYOUT.avenues.find(a => a.x > 0 && a.x < 100).x;   // 2nd Ave: the police lot's gate
 
 class Unit {
@@ -108,10 +110,13 @@ class Unit {
       { way: ROADS.way({ ax: 'ns', at: avenueX(), a: LT.gate, dirs: ['N', 'S'], join: true }, to, [[x - 9, ay], [LT.x1 - 3, ay], [LT.x1 + 1.5, LT.gate]], post, o) }];
   }
   /* the way home from where it stands (at a curb, heading `dir`) or from beyond the edge */
-  wayHome() {
-    const H = this.home, d = this.call, o = { vmax: this.spec.vmax * 0.7, alat: this.spec.alat };
-    const from = d.far ? { ax: d.far.ax, at: d.far.at, a: d.far.a, dirs: [OPP[d.far.dir]] } : { ax: d.ax, at: d.at, a: d.a + DIRV[d.dir][d.ax === 'ew' ? 0 : 1] * 16, dirs: [d.dir] };
-    const pre = d.far ? [] : [[this.pos.x, this.pos.z]];
+  /* where it starts from when it leaves the call: the street end it went out by, or the curb (pulling away ahead) */
+  fromCall() {
+    const d = this.call;
+    return d.far ? [{ ax: d.far.ax, at: d.far.at, a: d.far.a, dirs: [OPP[d.far.dir]] }, []] : [{ ax: d.ax, at: d.at, a: d.a + DIRV[d.dir][d.ax === 'ew' ? 0 : 1] * 16, dirs: [d.dir] }, [[this.pos.x, this.pos.z]]];
+  }
+  wayHome(from, pre) {
+    const H = this.home, o = { vmax: this.spec.vmax * 0.7, alat: this.spec.alat };
     if (H.kind === 'bay') {   // up the lane, along the yard, in through the rear door
       const F = CITY_LAYOUT.fire, lx = F.laneX;
       return [{ way: ROADS.way(from, { ax: 'ew', at: MAIN_Z, a: lx, dir: null, join: true }, pre, [[lx, F.apron - 2], [lx, F.yardZ], [H.x + 6, F.yardZ], [H.x, F.yardZ + 6], [H.x, H.z]], o) }];
@@ -125,14 +130,42 @@ class Unit {
     if (this.state === 'away') { this.homeQ = true; return; }
     if (this.state === 'on_scene') this.goHome();
   }
-  goHome() {
+  goHome(from, pre) {
+    if (!from) [from, pre] = this.fromCall();
     this.state = 'returning'; this.lights = false; this.model.group.visible = true; this.homeQ = false;
-    this.go(this.wayHome()); this.firstWay = this.way;
+    this.go(this.wayHome(from, pre)); this.firstWay = this.way;
     // where it waits while the yard / the lot is busy: in the lane short of the yard, on the avenue ~28 m short of the gate
     const W = this.way, F = CITY_LAYOUT.fire, [wx, wz] = this.home.kind === 'bay' ? [F.laneX, 14] : [avenueX(), CITY_LAYOUT.lot.gate];
     let best = Infinity; this.waitS = W.len;
     for (let i = 0; i < W.n; i++) { const d = Math.hypot(W.X[i] - wx, W.Z[i] - wz); if (d < best) { best = d; this.waitS = W.S[i]; } }
     if (this.home.kind === 'stall') this.waitS -= 28;
+  }
+  /* a medic takes its patient to the ER (code 3 or not): in under the canopy, a while there, then home */
+  transport(code3) {
+    const [from, pre] = this.fromCall(), slot = HOSP.slots.find(s => !s.unit) || HOSP.slots[1];
+    slot.unit = this; this.hosp = slot; this.code3 = code3; this.lights = code3; this.state = 'transporting';
+    const o = { vmax: this.spec.vmax * (code3 ? 1 : 0.75), alat: this.spec.alat };
+    this.go([{ way: ROADS.way(from, { ax: 'ew', at: MAIN_Z, a: HOSP.inX, dir: null, join: true }, pre, [[HOSP.inX, 42], [HOSP.inX, 35], [HOSP.inX + 6, HOSP.z], [slot.x, HOSP.z]], o) }]);
+    this.firstWay = this.way;
+  }
+  leaveHospital() {
+    const s = this.hosp; this.hosp = null; s.unit = null;
+    this.goHome({ ax: 'ew', at: MAIN_Z, a: HOSP.outX, dirs: ['E', 'W'], join: true }, [[s.x, HOSP.z], [HOSP.outX - 4, HOSP.z], [HOSP.outX, HOSP.z + 4], [HOSP.outX, 42]]);
+  }
+  /* ---- the ladder's aerial: turned, raised and run out toward a point (want 1), or bedded (want 0); k 0 … 1 ---- */
+  aimAerial(p) {
+    if (!this.model.aerial) return;
+    const g = this.model.group; g.updateMatrixWorld(true); const l = g.worldToLocal(_av.copy(p)), dx = l.x + 4.2, dz = l.z, hd = Math.hypot(dx, dz), dy = l.y - 3.25;
+    this.aerialAim = { yaw: Math.atan2(-dz, dx), pitch: clamp(Math.atan2(dy, hd), 0.25, 1.2), ext: clamp(Math.hypot(hd, dy) - 9.5, 0, 8) };
+    this.aerialWant = 1;
+  }
+  aerialTip(out) { const a = this.model.aerial; this.model.group.updateMatrixWorld(true); return a.fly.localToWorld(out.set(10.2, 0.3, 0)); }
+  updateAerial(dt) {
+    const a = this.model.aerial; if (!a) return;
+    const want = this.aerialWant || 0, k = this.aerialK = clamp((this.aerialK || 0) + clamp(want - (this.aerialK || 0), -dt / 7, dt / 7), 0, 1);
+    if (!this.aerialAim) return;
+    const k1 = clamp(k * 2, 0, 1), k2 = clamp(k * 2 - 1, 0, 1);
+    a.yawG.rotation.y = this.aerialAim.yaw * k1; a.pitchG.rotation.z = this.aerialAim.pitch * k2; a.fly.position.x = this.aerialAim.ext * k2;
   }
   /* ---- per step ---- */
   update(dt) {
@@ -149,9 +182,11 @@ class Unit {
         else this.state = 'responding';
         this.go(legs); this.t = 0;
       }
-    } else if (this.state === 'away' && this.homeQ) {
+    } else if (this.state === 'at_hospital' && this.t > this.dwellH) this.leaveHospital();
+    else if (this.state === 'away' && this.homeQ) {
       const [x, z] = ROADS.pos(this.call.far); if (!UNITS.some(o => o !== this && o.model.group.visible && Math.hypot(o.pos.x - x, o.pos.z - z) < 35)) this.goHome();
     }
+    this.updateAerial(dt);
     if (this.way) this.drive(dt);
     // the apron / the lot is free once the unit rolling out is out on the street (on the way home it keeps its zone till parked)
     if (this.state === 'responding' && ZONES[this.zoneOut] === this && this.clear) this.free();
@@ -181,7 +216,7 @@ class Unit {
     }
     this.wait = wait; this.waitKind = kind;
     // pulling away from the curb: let anyone driving by pass first
-    if (this.state === 'returning' && w === this.firstWay && !this.call.far && w.s < 3 && this.v < 0.5 && this.trafficBy()) vt = 0;
+    if ((this.state === 'returning' || this.state === 'transporting') && w === this.firstWay && this.v < 0.5 && w.s < 3 && this.trafficBy()) vt = 0;
     const acc = this.spec.svc === 'pd' || this.type === 'chief' ? 3.2 : 2.0;
     this.v = this.v < vt ? Math.min(vt, this.v + acc * dt) : Math.max(vt, this.v - 5 * dt);
     if (this.v < 0.05 && vt < 0.05) this.blockT += dt; else this.blockT = 0;
@@ -195,6 +230,7 @@ class Unit {
   /* the end of the last leg */
   arrive() {
     this.v = 0;
+    if (this.state === 'transporting') { this.state = 'at_hospital'; this.t = 0; this.dwellH = rand(40, 80); this.lights = false; return; }
     if (this.state === 'responding') {
       if (this.call.far) { this.state = 'away'; this.model.group.visible = false; } else this.state = 'on_scene';
       this.t = 0; this.free();
@@ -265,8 +301,8 @@ class Unit {
   /* crossings ahead: code 3 slows to clear a red light or a stop; code 1 stops at the line on red (or yellow, when it
      still can) and rolls through an all-way stop */
   crossCap(w) {
-    if (this.state !== 'responding' && this.state !== 'returning') return Infinity;
-    const code3 = this.state === 'responding';
+    if (this.state !== 'responding' && this.state !== 'returning' && this.state !== 'transporting') return Infinity;
+    const code3 = this.state === 'responding' || (this.state === 'transporting' && this.code3);
     for (let k = 1; k <= 45; k++) {   // the first point of the way inside a crossing (the box between the sidewalks)
       if (w.s + k > w.len) break;
       const p = w.at(w.s + k, _ub), x = Math.round(p.x / 50) * 50, z = Math.round(p.z / 50) * 50;
@@ -299,7 +335,7 @@ class Unit {
     scene.remove(this.model.group);
     this.model.group.traverse(o => { if (o.isPoints) { const i = NAV_MATS.indexOf(o.material); if (i >= 0) NAV_MATS.splice(i, 1); } });
     disposeTree(this.model.group);
-    if (this.home.bay) this.home.bay.unit = null; if (this.home.stall) this.home.stall.unit = null; this.free();
+    if (this.home.bay) this.home.bay.unit = null; if (this.home.stall) this.home.stall.unit = null; if (this.hosp) this.hosp.unit = null; this.free();
   }
 }
 function buildUnits() {

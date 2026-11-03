@@ -11,7 +11,7 @@ User-facing docs: `README.md` (keep it in sync when behaviour or properties chan
 ## Plan (stages)
 1. Skeleton from FAB — done. 2. Town and complex (`city.js`) — done. 3. Units: apparatus models, `Unit` state machine,
 roll out / return, road graph (`roads.js`), traffic rules — done. 4. CAD: calls, unit assignment, status, line pools,
-the terminal UI — done. 5. Scenes on site: structure fire, crash, medical, transport to the hospital. 6. Helicopters
+the terminal UI — done. 5. Scenes on site: structure fire, crash, car fire, crews, transport to the hospital — done. 6. Helicopters
 (medevac, police). 7. Civilian traffic yielding to lights and sirens. 8. Load from the music, persistence, panel,
 properties; **a new panel design** — the FAB / CSG "radar" look (glowing green on black, monospace everywhere) goes:
 a flat graphite dispatch board with a red-blue header stripe, sans-serif text (monospace only for numbers), units as
@@ -25,7 +25,7 @@ fictional (default FAIRHAVEN).
 - Plain JS, no build step, no npm. `'use strict'` classic scripts sharing **global** scope
   (no modules). three.js **r149** is vendored as `js/three.min.js` — never edit it.
 - `index.html` loads scripts in dependency order (later files use globals of earlier ones):
-  `core → flightpath → models → vehicles → city → terrain → effects → roads → units → radio → incidents → dispatch → main → properties → settings`,
+  `core → flightpath → models → vehicles → city → terrain → effects → roads → units → radio → incidents → dispatch → scenes → main → properties → settings`,
   then an inline script registers the WE audio listener (or starts the browser demo beat).
   `main.js` calls `init()` at its end, so anything `init()` needs must be defined before `main.js`.
 
@@ -38,10 +38,11 @@ fictional (default FAIRHAVEN).
 | `js/city.js` | `CITY_LAYOUT` (the one source of positions), `buildCity()`, `CITY` (houses with addresses, bays with roll-up doors, police lot stalls, signals, signs, `vegAt`, `signal(axis)`, `update`, `setTown`), `pavedAt` — see "Town" |
 | `js/terrain.js` | `TERRAIN`: the ground (tiled canvas texture + vertex-colour patches), the vegetation per season (InstancedMesh per kind, placed where `CITY.vegAt` allows), weather particles (snowfall, falling leaves) |
 | `js/roads.js` | `ROADS`: the street graph (crossings + far ends), `route(from, to)` (Dijkstra over node × heading: no U-turns on screen), `lane` (right-hand offsets), `way(from, to, pre, post, o)`; `Way` (rounded, sampled polyline with headings and a curvature / braking speed limit) — see "Units & traffic" |
-| `js/units.js` | `UNIT_TYPES`, `ROSTER`, `Unit` (homes, run state machine, zones, traffic rules, light bars; `radio` / `short` names, `callRef`), `UNITS`, `ZONES`, `houseDest` / `farDest` — see "Units & traffic" |
+| `js/units.js` | `UNIT_TYPES`, `ROSTER`, `HOSP` (the ER places), `Unit` (homes, run state machine, zones, traffic rules, light bars; `radio` / `short` names, `callRef`; `transport` / `leaveHospital`; the ladder's aerial: `aimAerial`, `aerialTip`, `aerialK` / `aerialWant`), `UNITS`, `ZONES`, `houseDest` / `farDest` — see "Units & traffic" |
 | `js/radio.js` | line pools (`DISPATCH_LINES`, `ACK_LINES`, `ON_SCENE`, `UPDATE_LINES`, `CLEAR_LINES`…), `radioLine(pool, vars)`, load tiers, `cadNow`, `RADIO` (the queue the terminal prints) — see "CAD" |
 | `js/incidents.js` | `INCIDENT_TYPES`, sites (houses, `BUSINESSES`, street spots, crossings, far ends), `pickSite`, `siteSlots`, `siteDest` |
 | `js/dispatch.js` | `DISPATCH` (calls, assignment, the call's course, `onState`), `TERM` (the CAD terminal DOM) |
+| `js/scenes.js` | `SCENES`, `FireScene`, `CarFireScene`, `CrashScene`, `PROPS` (pooled wrecks / burnt cars / cones), `CREW` (figures on scene), `waterArc` — see "Scenes" |
 | `js/effects.js` | `Tracers` (InstancedMesh, will carry the hose streams), `SpriteFX` (flash / smoke pools), `Scorch`, `FlashLights` |
 | `js/main.js` | WE property listener, scene init, camera, `VIEW` (screen helpers), light / season (`updateEnvironment`, `updateLights`), audio analysis + `onBeat`, `LOAD`, panel, main loop |
 | `js/properties.js` | **generated** from `project.json` — do not edit by hand |
@@ -51,7 +52,7 @@ fictional (default FAIRHAVEN).
 
 ## Rules / conventions
 - **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in
-  `index.html` (WE's CEF caches aggressively). Current: `v=6`.
+  `index.html` (WE's CEF caches aggressively). Current: `v=7`.
 - **New WE property**: add it to `project.json`, read it in `applyUserProperties` (`main.js`) into `CFG`,
   then run `python tools/gen_properties.py`. Property `order` decides the browser-drawer group
   (0–9 camera/time, 10–19 audio/calls, 20–29 terrain & season, 30–39 panel & terminal, 40–49 units, 50–59 town).
@@ -133,6 +134,22 @@ fictional (default FAIRHAVEN).
 - **Terminal** (`TERM`, `#cad`): header (town 911 · CAD, TONES flashing on a new call, clock), up to 3 call cards (unit
   chips coloured by status: dsp / enr / osc / avl / clr), the last 9 log lines; properties `terminal`, `terminalposition`.
   The cards are rebuilt only when their HTML changes.
+
+## Scenes (`js/scenes.js`)
+- `SCENES.open(call)` when a call comes in (by `type.kind`), `scene.close()` when it closes; `scene.ready` gates the
+  dispatcher's clearing (a fire: out for 20 s). Nothing is built per call: wrecks / burnt cars come from `PROPS` pools
+  (`car(list)` / `put`), cones are one InstancedMesh (`cone` / `dropCones`), crews one InstancedMesh (`CREW.take` /
+  `drop`; `CREW.update` puts a unit's crew beside it on the sidewalk side while it stands on scene).
+- **FireScene**: emitters at the front windows and the roof (`house.rot` 0 / π: local → world by ±1); `heat` 0.35 → 1
+  until water, −0.009/s per stream (the engine's line from the yard, the ladder's aerial over the roof, from 6 s after
+  arrival); `out` at 0, steam for a minute. Particles by time accumulators: `FX.fire` (additive flames), `FX.smoke` (black
+  smoke / white steam — colour given, not tinted), `FX.water` (`waterArc`: ballistic, `rise` −9.8).
+- **Aerial** (`Unit.aimAerial(p)`): yaw first, then pitch and fly together (`aerialK` 0 … 1 at 1/7 per s). The
+  dispatcher beds it (`aerialWant` 0) before releasing the ladder; it never drives with it up (tested).
+- **Transports**: on medical / crash calls the dispatcher sends the first medic it clears (70 %) to the ER (`transport`,
+  code 3 at 25 %): in at `HOSP.inX`, under the canopy to a free place (`HOSP.slots`), `at_hospital` 40–80 s, out at
+  `HOSP.outX` and home (`leaveHospital` → `goHome(from, pre)`). Its radio goes on without the call (`onState`, `!callRef`).
+- **CrashScene**: the wrecks 11 / 17 m from the crossing; the units' curb (`crossingSite`) 30 m up the approach.
 
 ## Performance & memory invariants (the wallpaper never restarts — leaks accumulate for days)
 - **Never create geometry per spawn and drop it.** Pool and clone templates; anything removed for good is disposed

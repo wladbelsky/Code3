@@ -6,7 +6,7 @@
    The units' state changes drive the radio (DISPATCH.onState): en route, on scene (the first arriving gives a size-up),
    updates while working, released one by one once the call's dwell has run (first arrival + dwell), available,
    in quarters. A call closes once every unit has cleared it.                                                      */
-const MAX_CALLS = 4;
+const MAX_CALLS = 4, TRANSPORTS = new Set(['medical', 'mva']);
 const CALL_STATUS = { pending: 'PENDING', holding: 'HOLDING', dispatched: 'DISPATCHED', onscene: 'ON SCENE', clearing: 'CLEARING', closed: 'CLOSED' };
 const DISPATCH = {
   calls: [], timer: 25, seq: 0, fillT: 0,
@@ -26,6 +26,7 @@ const DISPATCH = {
     const need = [...type.units]; for (const [u, p] of type.extra || []) if (Math.random() < p) need.push(u);
     const c = { id: `26-${110341 + this.seq++}`, key, type, site: s, need, units: [], t: T, status: 'pending', arrived: null, dwell: rand(...type.dwell), updates: 0, detail: type.details ? pick(type.details) : '' };
     this.calls.push(c);
+    SCENES.open(c);
     RADIO.say('CAD', `#${c.id}  ${type.name}  ${s.name}`, 'sys');
     if (!type.self) TERM.tones();
     this.assign(c);
@@ -77,21 +78,33 @@ const DISPATCH = {
           const u = there.find(u => u.spec.svc === (c.type.svc === 'pd' ? 'pd' : 'fire')) || there[0];
           RADIO.say(u.radio, radioLine(UPDATE_LINES[u.spec.svc === 'pd' && c.type.svc !== 'pd' ? 'pd' : c.type.kind], this.vars(c, u)), u.spec.svc);
         }
-        if (T - c.arrived > c.dwell) { c.status = 'clearing'; c.relT = 0; }
+        if (T - c.arrived > c.dwell && (!c.scene || c.scene.ready)) { c.status = 'clearing'; c.relT = 0; }   // (a fire: once it is out)
       }
       if (c.status === 'clearing') {
         c.relT -= dt;
         if (c.relT <= 0 && there.length) {   // the chief clears last
           const u = there.find(u => u.type !== 'chief') || there[0];
-          u.release(); c.relT = rand(3, 7);
+          if (u.aerialK > 0.01) { u.aerialWant = 0; c.relT = 1; }   // the aerial is bedded first
+          else if (u.type === 'medic' && TRANSPORTS.has(c.type.kind) && !c.transported && Math.random() < 0.7) {   // the patient goes to the ER
+            c.transported = true; const code3 = Math.random() < 0.25;
+            RADIO.say(u.radio, radioLine(code3 ? ['{U}, transporting one to {H}, priority one.', '{U}, emergent to {H} with one.'] : ['{U}, transporting one to {H}, non-emergent.', '{U}, en route to {H} with one, stable.'], this.vars(c, u)), 'ems', 1);
+            u.callRef = null; u.transport(code3); c.relT = rand(3, 7);
+          } else { u.release(); c.relT = rand(3, 7); }
         }
-        if (c.units.every(u => u.callRef !== c)) { c.status = 'closed'; c.closedAt = T; RADIO.say('CAD', `#${c.id}  CLOSED`, 'sys'); }
+        if (c.units.every(u => u.callRef !== c)) { c.status = 'closed'; c.closedAt = T; RADIO.say('CAD', `#${c.id}  CLOSED`, 'sys'); if (c.scene) c.scene.close(); }
       }
     }
     if (this.calls.length > 12) this.calls = this.calls.filter(c => c.status !== 'closed' || T - c.closedAt < 10);
   },
   onState(u, from, to) {
-    const c = u.callRef; if (!c) return;
+    const c = u.callRef;
+    if (!c) {   // a transport: no call any more, still on the radio
+      const v = { U: u.radio, H: 'Memorial' };
+      if (to === 'transporting') RADIO.say('CAD', `${u.short}  TRAN  MEMORIAL`, 'sys');
+      else if (to === 'at_hospital') { RADIO.say('CAD', `${u.short}  AT HOSP`, 'sys'); RADIO.say(u.radio, radioLine(['{U}, at {H}.', '{U}, arriving at {H}.'], v), 'ems'); }
+      else if (to === 'returning' && from === 'at_hospital') { RADIO.say('CAD', `${u.short}  AVAIL`, 'sys'); RADIO.say(u.radio, radioLine(['{U}, clear of {H}, available.', '{U}, back in service from {H}.'], v), 'ems'); }
+      return;
+    }
     const v = this.vars(c, u), svc = u.spec.svc;
     if (to === 'responding' && from !== 'pullout') RADIO.say('CAD', `${u.short}  ENRT  #${c.id}`, 'sys');
     else if (to === 'on_scene' || to === 'away') {
@@ -144,7 +157,7 @@ const TERM = {
     setCls(this.hdr, 'cad-hdr' + (T < this.toneUntil && Math.floor(T * 4) % 2 ? ' tone' : ''));
     const cls = u => u.callRef !== null && u.state === 'turnout' ? 'dsp' : u.state === 'responding' || u.state === 'pullout' ? 'enr' : u.state === 'on_scene' || u.state === 'away' ? 'osc' : 'avl';
     const html = DISPATCH.calls.filter(c => c.status !== 'closed' || T - c.closedAt < 6).slice(-3).reverse().map(c =>
-      `<div class="card ${c.status}"><div><b>#${c.id}</b><i>${c.type.name}</i><s>${CALL_STATUS[c.status]}</s></div><div class="a">${c.site.name} · ${c.site.cross || ''}</div><div class="us">${c.units.map(u => `<span class="${u.callRef === c ? cls(u) : 'clr'}">${u.short}</span>`).join('')}</div></div>`).join('');
+      `<div class="card ${c.status}"><div><b>#${c.id}</b><i>${c.type.name}</i><s>${CALL_STATUS[c.status]}</s></div><div class="a">${c.site.name}${c.site.cross && !c.site.name.includes(c.site.cross) ? ' · ' + c.site.cross : ''}</div><div class="us">${c.units.map(u => `<span class="${u.callRef === c ? cls(u) : 'clr'}">${u.short}</span>`).join('')}</div></div>`).join('');
     if (html !== this.cardsHtml) { this.cardsHtml = html; this.callsEl.innerHTML = html; }
   }
 };

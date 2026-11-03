@@ -7,7 +7,7 @@ houses, a school and a park around them. The time of day follows your PC clock a
 From the author of [Forward Air Base](https://github.com/wladbelsky/air-base-wallpaper) and
 [Carrier Strike Group](https://github.com/wladbelsky/carrier-wallpaper).
 
-> **Work in progress.** The town, the units, the calls and the dispatch terminal are in; the scenes on site (fire, crashes, transports) are next.
+> **Work in progress.** The town, the units, the calls, the dispatch terminal and the scenes on site are in; helicopters and civilian traffic are next.
 
 ![The town by day](screenshots/day.jpg)
 
@@ -60,6 +60,20 @@ clearing — plain language for fire and EMS, 10-codes for the police. Propertie
 position, **Calls when it is quiet** (how often calls come in without music).
 
 ![An evening structure fire on the terminal](screenshots/cad.jpg)
+
+## On scene
+
+- **House fires** grow until the first engine puts water on them: the engine's crew runs a line from the yard, the
+  ladder raises its aerial over the roof; flames and black smoke, then white steam once it is knocked down. The units
+  stay until it is out; the ladder beds its aerial before it leaves.
+- **Crashes**: two wrecks near the crossing, steam from a radiator, cones; **car fires** burn until the engine's water
+  puts them out and the car is left charred.
+- **Crews** stand by their units: firefighters, EMTs, officers.
+- **Transports**: medics take patients to the hospital's ER (in under the canopy), wait there a while and come home.
+
+| A house fire at dusk | A crash at a crossing |
+|---|---|
+| ![House fire](screenshots/fire.jpg) | ![Crash](screenshots/crash.jpg) |
 
 ## Music
 

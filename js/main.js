@@ -84,6 +84,9 @@ function init() {
   FX.flash = new SpriteFX(scene, TEX.flash, THREE.AdditiveBlending, 120);
   FX.smoke = new SpriteFX(scene, TEX.smoke, THREE.NormalBlending, 360, true);
   FX.scorch = new Scorch(scene, 40);
+  FX.fire = new SpriteFX(scene, TEX.flash, THREE.AdditiveBlending, 260);
+  FX.water = new SpriteFX(scene, TEX.soft, THREE.NormalBlending, 420, true);
+  PROPS.build(); CREW.build();
   FX.lights = new FlashLights(scene, 4);
 
   ready = true;
@@ -321,6 +324,9 @@ function step(dt) {
   FX.tracers.update(dt);
   FX.flash.update(dt);
   FX.smoke.update(dt, ENV.smokeTint, camera);
+  FX.fire.update(dt);
+  FX.water.update(dt, null, camera);
+  SCENES.update(dt);
   FX.scorch.update(dt);
   FX.lights.update(dt, 0.6 + ENV.night * 0.8);
   TERRAIN.update(dt);

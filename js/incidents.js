@@ -65,14 +65,14 @@ function streetSite() {
   }
   return site('street', 'ew', 150, 100, -1);
 }
-/* a crossing: the curb ~22 m up one of its approaches (the crash itself comes with the scenes) */
+/* a crossing: the units' curb ~30 m up one of its approaches (the wrecks lie nearer the crossing: CrashScene) */
 function crossingSite() {
   const L = CITY_LAYOUT;
   for (let n = 0; n < 30; n++) {
     const s = pick(L.streets), v = pick(L.avenues), ew = Math.random() < 0.5, sg = Math.random() < 0.5 ? 1 : -1, side = Math.random() < 0.5 ? 1 : -1;
-    const at = ew ? s.z : v.x, a = (ew ? v.x : s.z) + sg * 22, [x, z] = ew ? [a, at + side * 5] : [at + side * 5, a];
+    const at = ew ? s.z : v.x, a = (ew ? v.x : s.z) + sg * 30, [x, z] = ew ? [a, at + side * 5] : [at + side * 5, a];
     if (Math.abs(a) > L.inner - 10 || CITY.drives.some(r => x > r[0] - 14 && x < r[2] + 14 && z > r[1] - 6 && z < r[3] + 6)) continue;
-    return Object.assign(site('crossing', ew ? 'ew' : 'ns', at, a, side), { name: `${s.name} / ${v.name}` });
+    return Object.assign(site('crossing', ew ? 'ew' : 'ns', at, a, side), { name: `${s.name} / ${v.name}`, cross: ew ? v.name : s.name });
   }
   return streetSite();
 }

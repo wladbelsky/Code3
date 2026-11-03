@@ -33,7 +33,7 @@ test('every call type can be dispatched and run to the end', async ({ wp }) => {
 
 test('a call with no free units holds, then gets them as they come back', async ({ wp }) => {
   await wp.boot();
-  await wp.run(() => { CFG.calls = 0; DISPATCH.newCall('medical'); DISPATCH.newCall('medical'); DISPATCH.newCall('medical'); });
+  await wp.run(() => { CFG.calls = 0; DISPATCH.newCall('fall'); DISPATCH.newCall('fall'); DISPATCH.newCall('fall'); });   // (no extra units on a fall)
   const r = await wp.run(() => DISPATCH.calls.map(c => c.status));
   expect(r.filter(s => s === 'holding').length, 'two medics, three calls').toBe(1);
   const done = await wp.until(() => DISPATCH.calls.every(c => c.status === 'closed'), 900);
