@@ -12,7 +12,7 @@ From the author of [Forward Air Base](https://github.com/wladbelsky/air-base-wal
 
 ![The town by day](screenshots/day.jpg)
 
-- **Live demo** (runs in the browser): https://wladbelsky.github.io/Code3/ (once published)
+- **Live demo** (runs in the browser): https://wladbelsky.github.io/Code3/
 
 ## Install
 
