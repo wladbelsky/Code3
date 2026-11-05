@@ -7,7 +7,7 @@ houses, a school and a park around them. The time of day follows your PC clock a
 From the author of [Forward Air Base](https://github.com/wladbelsky/air-base-wallpaper) and
 [Carrier Strike Group](https://github.com/wladbelsky/carrier-wallpaper).
 
-> **Work in progress.** The town, the units, the calls, the dispatch terminal, the scenes on site, the helicopters and the traffic are in; the new panel and the music's load are next.
+> **Work in progress.** Everything is in — the town, the units, the calls, the dispatch terminal, the scenes on site, the helicopters, the traffic and the dispatch board; polish and the Workshop release are next.
 
 ![The town by day](screenshots/day.jpg)
 
@@ -94,6 +94,14 @@ position, **Calls when it is quiet** (how often calls come in without music).
 | Air 1 over a night search | Medevac 1 at the park landing zone |
 |---|---|
 | ![Air 1](screenshots/heli.jpg) | ![Medevac 1](screenshots/medevac.jpg) |
+
+## The dispatch board
+
+The panel shows the clock, the day and the season, today's calls, the **load** and the sound, every unit and helicopter
+as a status tile (its service's colour on the edge; green available, amber dispatched / en route, red on scene, blue
+transporting) and the open calls as cards. Properties: **Show the panel**, its position, scale and **accent colour**.
+With **Remember the CAD log and the day's calls** on, a restart keeps the call numbers running on, today's count, the
+last radio lines and the load.
 
 ## Music
 

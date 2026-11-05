@@ -51,7 +51,7 @@ function applySettings() {
     panel.style.setProperty('--ui', CFG.uiColor);
     panel.style.setProperty('--scale', CFG.panelScale / 100);
   }
-  const title = document.querySelector('#panel .title'); if (title) title.textContent = `◆ ${CFG.townName} · DISPATCH`;
+  const title = document.querySelector('#panel .title'); if (title) title.textContent = CFG.townName;
   if (!ready) return;
   if (townShown !== CFG.townName) { townShown = CFG.townName; CITY.setTown(CFG.townName); }
   TERM.apply();
@@ -94,7 +94,7 @@ function init() {
   window.addEventListener('resize', resize);
   buildUnits(); buildHelis(); buildTraffic();
   TERM.build();
-  buildUI(); applySettings(); resize(); updateEnvironment(); updateLights();
+  buildUI(); PERSIST.restore(); applySettings(); resize(); updateEnvironment(); updateLights();
   requestAnimationFrame(frame);
 }
 
@@ -244,30 +244,56 @@ function demoAudio() {
   onAudio(arr);
 }
 
-/* ---- panel ---- */
+/* ---- panel: the dispatch board ----
+   Header (town, clock), the day and the season, today's calls, the load (10 cells) and the sound, the units as status
+   tiles (the service's colour on the edge, the status as the tile's colour), the open calls as cards (at most 3: no
+   scrolling). Written only where something changed. */
 let uiTimer = 0, meterTimer = 0, envTimer = 0;
+const TILE_STATES = {   // state → [label, class]: AVAIL green, DISP / ENRT amber, ONSC red, TRAN / AT HOSP blue
+  quarters: ['In qtrs', 'avl'], turnout: ['Disp', 'dsp'], pullout: ['Enrt', 'enr'], responding: ['Enrt', 'enr'], on_scene: ['On scene', 'osc'],
+  away: ['On scene', 'osc'], returning: ['Avail', 'ret'], parking: ['Avail', 'ret'], transporting: ['Transport', 'trn'], at_hospital: ['At hosp', 'trn']
+};
 function buildUI() {
   document.getElementById('collapse').onclick = () => {
     const p = document.getElementById('panel'); p.classList.toggle('collapsed');
     document.getElementById('collapse').textContent = p.classList.contains('collapsed') ? '+' : '–';
   };
   const meter = document.getElementById('meter');
-  for (let i = 0; i < 28; i++) meter.appendChild(document.createElement('i'));
+  for (let i = 0; i < 40; i++) meter.appendChild(document.createElement('i'));
+  const lb = document.getElementById('loadbar');
+  for (let i = 0; i < 10; i++) { const c = document.createElement('i'); c.className = 'l' + (1 + Math.floor(i / 2.5)); lb.appendChild(c); }
+  const tiles = document.getElementById('units'); tiles.textContent = '';
+  for (const u of [...UNITS, ...HELIS]) {
+    const t = document.createElement('div'); t.className = 'tile ' + u.spec.svc; t.innerHTML = '<b></b><span></span>';
+    t.children[0].textContent = u.short; tiles.appendChild(t); u.tile = { el: t, st: t.children[1] };
+  }
 }
 /* the panel's DOM is written only where a value changed (4×/s: a rewrite invalidates style and layout every time) */
 const setTxt = (el, t) => { if (el._t !== t) { el._t = t; el.textContent = t; } };
 const setCls = (el, c) => { if (el._c !== c) { el._c = c; el.className = c; } };
 const UI_EL = {}, uiEl = id => UI_EL[id] || (UI_EL[id] = document.getElementById(id));
-let uiMinute = -1;
+let uiMinute = -1, cardsHtml = '';
 function updateUI() {
   if (!CFG.showPanel) return;
   const now = getNow(), mi = now.getHours() * 60 + now.getMinutes();
   if (mi !== uiMinute) { uiMinute = mi; setTxt(uiEl('clock'), now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })); }
-  const e = ENV.elev;
-  setTxt(uiEl('daystate'), (e > 6 ? 'DAY' : e > -6 ? 'TWILIGHT' : 'NIGHT') + ' · ' + TERRAIN.season.toUpperCase());
-  const ld = uiEl('load'), n = Math.round(LOAD.level * 10);
-  setTxt(ld, '▮'.repeat(n) + '▯'.repeat(10 - n) + '  ' + LOAD.label + (FILE_AUDIO.playing ? ' (FILE)' : AUD.demo && DEMO.on ? ' (DEMO)' : ''));
+  const e = ENV.elev, s = PERSIST.today();
+  setTxt(uiEl('daystate'), (e > 6 ? 'Day' : e > -6 ? 'Twilight' : 'Night') + ' · ' + TERRAIN.season[0].toUpperCase() + TERRAIN.season.slice(1));
+  if (uiEl('calls')._n !== s.calls) { uiEl('calls')._n = s.calls; uiEl('calls').innerHTML = `Calls today <b>${s.calls}</b>`; }
+  const n = Math.round(LOAD.level * 10), cells = uiEl('loadbar').children;
+  for (let i = 0; i < cells.length; i++) cells[i].classList.toggle('on', i < Math.max(1, n));
+  const ld = uiEl('load'); setTxt(ld, LOAD.label + (FILE_AUDIO.playing ? ' · file' : AUD.demo && DEMO.on ? ' · demo' : ''));
   setCls(ld, 'lv' + Math.min(3, Math.floor(LOAD.level * 4)));
+  for (const u of [...UNITS, ...HELIS]) {
+    if (!u.tile) continue;
+    const [lab, cls] = TILE_STATES[u.state] || [u.state, ''];
+    setTxt(u.tile.st, u.air && u.state === 'quarters' ? 'On pad' : lab); setCls(u.tile.el, 'tile ' + u.spec.svc + ' ' + cls);
+  }
+  const open = DISPATCH.calls.filter(c => c.status !== 'closed').slice(-3).reverse();
+  const html = open.length ? open.map(c => `<div class="cc ${c.status}"><div class="c1"><b>${c.type.name}</b><s>${CALL_STATUS[c.status]}</s></div>` +
+    `<div class="c2">${c.site.name} <span class="num">#${c.id}</span></div><div class="c3">${c.units.filter(u => u.callRef === c).map(u => u.short).join(' ') || '—'} · ${Math.floor((T - c.t) / 60)} min</div></div>`).join('')
+    : '<div class="none">No active calls</div>';
+  if (html !== cardsHtml) { cardsHtml = html; uiEl('callcards').innerHTML = html; }
 }
 function updateMeter() {
   if (!CFG.showPanel) return;
@@ -324,6 +350,7 @@ function step(dt) {
   DISPATCH.update(dt);
   RADIO.update(dt);
   LOAD.update(dt);
+  PERSIST.update(dt);
   FX.tracers.update(dt);
   FX.flash.update(dt);
   FX.smoke.update(dt, ENV.smokeTint, camera);

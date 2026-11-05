@@ -32,7 +32,7 @@ const CFG = {
   weather: true,      // snowfall in winter, falling leaves in autumn
   terminal: true,     // the dispatch terminal (CAD) on screen
   termPos: 'tl',
-  saveState: true,    // remember who is out on a call between sessions
+  saveState: true,    // remember the CAD log, the call counter, the day's calls and the load between sessions
   shadows: true,
   showPanel: true,
   panelPos: 'br',

@@ -25,7 +25,7 @@ const DISPATCH = {
     const type = INCIDENT_TYPES[key], s = pickSite(pick(type.at), this.open.map(c => c.site)); if (!s) return null;
     const need = [...type.units]; for (const [u, p] of type.extra || []) if (Math.random() < p) need.push(u);
     const c = { id: `26-${110341 + this.seq++}`, key, type, site: s, need, units: [], t: T, status: 'pending', arrived: null, dwell: rand(...type.dwell), updates: 0, detail: type.details ? pick(type.details) : '' };
-    this.calls.push(c);
+    this.calls.push(c); PERSIST.count(c);
     SCENES.open(c);
     RADIO.say('CAD', `#${c.id}  ${type.name}  ${s.name}`, 'sys');
     if (!type.self) TERM.tones();

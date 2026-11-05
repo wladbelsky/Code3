@@ -12,11 +12,8 @@ User-facing docs: `README.md` (keep it in sync when behaviour or properties chan
 1. Skeleton from FAB — done. 2. Town and complex (`city.js`) — done. 3. Units: apparatus models, `Unit` state machine,
 roll out / return, road graph (`roads.js`), traffic rules — done. 4. CAD: calls, unit assignment, status, line pools,
 the terminal UI — done. 5. Scenes on site: structure fire, crash, car fire, crews, transport to the hospital — done. 6. Helicopters
-(medevac, police) — done. 7. Civilian traffic yielding to lights and sirens — done. 8. Load from the music, persistence, panel,
-properties; **a new panel design** — the FAB / CSG "radar" look (glowing green on black, monospace everywhere) goes:
-a flat graphite dispatch board with a red-blue header stripe, sans-serif text (monospace only for numbers), units as
-status tiles (service colour + status colour: AVAIL green, ENRT amber, ONSC red, TRAN blue, OOS grey), active calls
-as cards; the splash and the settings drawer to match. The CAD terminal stays a "screen" on purpose. 9. Polish: performance, preview GIF (**`preview.gif` is still Forward Air Base's placeholder**),
+(medevac, police) — done. 7. Civilian traffic yielding to lights and sirens — done. 8. Load from the music, persistence, the new panel (a graphite
+dispatch board), the splash and the settings drawer to match — done (see "Panel & persistence"). 9. Polish: performance, preview GIF (**`preview.gif` is still Forward Air Base's placeholder**),
 screenshots, README, Workshop.
 Original work in the genre: no names, logos, models or assets of existing games or real departments; the town is
 fictional (default FAIRHAVEN).
@@ -25,7 +22,7 @@ fictional (default FAIRHAVEN).
 - Plain JS, no build step, no npm. `'use strict'` classic scripts sharing **global** scope
   (no modules). three.js **r149** is vendored as `js/three.min.js` — never edit it.
 - `index.html` loads scripts in dependency order (later files use globals of earlier ones):
-  `core → models → vehicles → city → terrain → effects → roads → units → traffic → radio → incidents → dispatch → scenes → helis → main → properties → settings`,
+  `core → models → vehicles → city → terrain → effects → roads → units → traffic → radio → incidents → dispatch → scenes → helis → persist → main → properties → settings`,
   then an inline script registers the WE audio listener (or starts the browser demo beat).
   `main.js` calls `init()` at its end, so anything `init()` needs must be defined before `main.js`.
 
@@ -43,9 +40,10 @@ fictional (default FAIRHAVEN).
 | `js/incidents.js` | `INCIDENT_TYPES`, sites (houses, `BUSINESSES`, street spots, crossings, far ends), `pickSite`, `siteSlots`, `siteDest` |
 | `js/dispatch.js` | `DISPATCH` (calls, assignment, the call's course, `onState`), `TERM` (the CAD terminal DOM) |
 | `js/helis.js` | `HELI_TYPES`, `HELI_LZ` / `lzFor`, `heliModel` / `HELI_MODELS`, `Heli` (flight, CAD states like a unit's, searchlight / landing light, rotor wash), `HELIS`, `buildHelis` — see "Helicopters" |
+| `js/persist.js` | `PERSIST`: the CAD between sessions (call counter, today's calls by service, the last log lines, the load) — see "Panel & persistence" |
 | `js/scenes.js` | `SCENES`, `FireScene`, `CarFireScene`, `CrashScene`, `PROPS` (pooled wrecks / burnt cars / cones), `CREW` (figures on scene), `waterArc` — see "Scenes" |
 | `js/effects.js` | `Tracers` (InstancedMesh, will carry the hose streams), `SpriteFX` (flash / smoke pools), `Scorch`, `FlashLights` |
-| `js/main.js` | WE property listener, scene init, camera, `VIEW` (screen helpers), light / season (`updateEnvironment`, `updateLights`), audio analysis + `onBeat`, `LOAD`, panel, main loop |
+| `js/main.js` | WE property listener, scene init, camera, `VIEW` (screen helpers), light / season (`updateEnvironment`, `updateLights`), audio analysis + `onBeat`, `LOAD`, the panel (`buildUI` / `updateUI`, `TILE_STATES`), main loop |
 | `js/properties.js` | **generated** from `project.json` — do not edit by hand |
 | `js/settings.js` | browser-only settings drawer, demo beat, audio-file player (returns early inside WE) |
 | `tools/gen_properties.py` | regenerates `js/properties.js` |
@@ -53,7 +51,7 @@ fictional (default FAIRHAVEN).
 
 ## Rules / conventions
 - **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in
-  `index.html` (WE's CEF caches aggressively). Current: `v=9`.
+  `index.html` (WE's CEF caches aggressively). Current: `v=10`.
 - **New WE property**: add it to `project.json`, read it in `applyUserProperties` (`main.js`) into `CFG`,
   then run `python tools/gen_properties.py`. Property `order` decides the browser-drawer group
   (0–9 camera/time, 10–19 audio/calls, 20–29 terrain & season, 30–39 panel & terminal, 40–49 units, 50–59 town).
@@ -192,6 +190,20 @@ fictional (default FAIRHAVEN).
   park lawn — kept clear of trees) and, released, flies the patient to the roof (`transporting` → `at_hospital` →
   quarters). MEDEVAC REQUEST (`kind: 'air'`, `airSite`): out of town and back to the roof.
 
+## Panel & persistence (`index.html`, `style.css`, `js/main.js`, `js/persist.js`)
+- **The panel** is a flat graphite dispatch board (not FAB's radar look): a red-blue stripe, the header (a `911` badge in
+  the accent colour — property `uicolor` — the town, the clock), the day and the season, today's calls, the load (10
+  cells: `#loadbar`, label `#load`), the sound (`#meter`), the units as status tiles (`#units`: one per unit and
+  helicopter, built in `buildUI`; the service's colour on the left edge, the status as the tile's colour —
+  `TILE_STATES`: avl / ret green, dsp / enr amber, osc red, trn blue), the open calls as cards (`#callcards`, at most 3).
+  Sans-serif text, monospace only for numbers and callsigns. `updateUI` (4×/s) writes only what changed (`setTxt` /
+  `setCls`; the cards as one string compared). The splash and the browser settings drawer share the style; the CAD
+  terminal (`#cad`) stays a phosphor screen on purpose.
+- **Persistence** (`PERSIST`, property `savestate`): `code3.cad.v1` in localStorage, every 10 s only when changed and on
+  `pagehide` / hiding: the call counter (`DISPATCH.seq`: the numbers run on), today's calls by service (`count` from
+  `DISPATCH.newCall`; a new day starts again), the last 9 log lines (back on the terminal with their times, then
+  `CAD RECONNECTED`), the load (rounded to 0.05). Not the units: they start in quarters, open calls are dropped.
+
 ## Performance & memory invariants (the wallpaper never restarts — leaks accumulate for days)
 - **Never create geometry per spawn and drop it.** Pool and clone templates; anything removed for good is disposed
   (`disposeTree`; it skips materials with `userData.shared`: everything from `M()` / `sharedMat()`).
@@ -209,7 +221,7 @@ fictional (default FAIRHAVEN).
 ## Running & testing
 - WE: "Open from File" → `project.json` (audio listener + properties come from WE).
 - Browser preview: serve the folder, e.g. `python -m http.server 8766`, open `http://localhost:8766/`.
-  The ⚙ SETTINGS drawer mirrors all WE properties (stored in `localStorage`); URL params `?hour=22`,
+  The ⚙ Settings drawer mirrors all WE properties (stored in `localStorage`); URL params `?hour=22`,
   `?zoom=150`, `?season=winter`, `?demo=1`, `?ts=N` (time scale).
 - **Automated tests** (`tests/`, Playwright Test in headless Chromium + SwiftShader WebGL): run them in Docker —
   `powershell -ExecutionPolicy Bypass -File tools/test.ps1 [file / -g pattern]` (no local Node; `$env:SEED = N` for

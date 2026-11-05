@@ -33,9 +33,9 @@
   const GROUPS = [[0, 9, 'Camera & time'], [10, 19, 'Audio & calls'], [20, 29, 'Terrain & season'], [30, 39, 'Panel & terminal'], [40, 49, 'Units'], [50, 59, 'Town']];
 
   /* ---- UI ---- */
-  const gear = el('button', 'cfg-gear', '⚙ SETTINGS'); gear.id = 'cfgGear';
+  const gear = el('button', 'cfg-gear', '⚙ Settings'); gear.id = 'cfgGear';
   const drawer = el('div', 'cfg'); drawer.id = 'cfg';
-  const head = el('div', 'cfg-head'); head.append(el('span', 'cfg-title', '◆ WALLPAPER SETTINGS'));
+  const head = el('div', 'cfg-head'); head.append(el('span', 'cfg-title', 'Code 3 · Settings'));
   const close = el('button', 'cfg-x', '✕'); head.append(close);
   const body = el('div', 'cfg-body');
   drawer.append(head, body);
@@ -93,11 +93,11 @@
   body.append(el('div', 'cfg-sec', 'Play an audio file'));
   const FA = FILE_AUDIO;
   const pickIn = el('input'); pickIn.type = 'file'; pickIn.accept = 'audio/*'; pickIn.style.display = 'none';
-  const pickBtn = el('button', 'cfg-btn', '📂 CHOOSE AUDIO FILE…');
+  const pickBtn = el('button', 'cfg-btn', 'Choose an audio file…');
   const nameEl = el('div', 'cfg-file', 'No file loaded');
   const prog = el('div', 'cfg-prog'); const progBar = el('i'); prog.append(progBar);
   const ctrlRow = el('div', 'cfg-player');
-  const playBtn = el('button', null, '▶ PLAY'), stopBtn = el('button', null, '■ STOP');
+  const playBtn = el('button', null, '▶ Play'), stopBtn = el('button', null, '■ Stop');
   ctrlRow.append(playBtn, stopBtn);
   body.append(pickIn, pickBtn, nameEl, prog, ctrlRow);
   demoRow('Volume', r => { const c = el('input', 'cfg-ctl'), o = el('span', 'cfg-val', '80'); Object.assign(c, { type: 'range', min: 0, max: 100, step: 1, value: 80 }); c.oninput = () => { o.textContent = c.value; if (FA.el) FA.el.volume = c.value / 100; }; r.append(c, o); FA.volCtl = c; });
@@ -112,8 +112,8 @@
     FA.an = FA.ctx.createAnalyser(); FA.an.fftSize = 2048; FA.an.smoothingTimeConstant = 0.3; FA.an.minDecibels = -90; FA.an.maxDecibels = -10;
     src.connect(FA.an); FA.an.connect(FA.ctx.destination);
     FA.bins = new Uint8Array(FA.an.frequencyBinCount); FA.el = a;
-    a.onplay = () => { FA.playing = true; playBtn.textContent = '❚❚ PAUSE'; };
-    a.onpause = a.onended = () => { FA.playing = false; playBtn.textContent = '▶ PLAY'; };
+    a.onplay = () => { FA.playing = true; playBtn.textContent = '❚❚ Pause'; };
+    a.onpause = a.onended = () => { FA.playing = false; playBtn.textContent = '▶ Play'; };
     nameEl.textContent = f.name;
     FA.ctx.resume(); a.play();
   };
@@ -136,7 +136,7 @@
     onAudio(arr);
   }, 33);
 
-  const reset = el('button', 'cfg-btn cfg-reset', 'RESET ALL TO DEFAULTS');
+  const reset = el('button', 'cfg-btn cfg-reset', 'Reset all to defaults');
   reset.onclick = () => { store.clear(); location.reload(); };
   body.append(reset);
 

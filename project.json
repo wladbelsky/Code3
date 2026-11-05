@@ -226,13 +226,13 @@
 			},
 			"uicolor": {
 				"order": 35,
-				"text": "Panel colour",
+				"text": "Panel accent colour",
 				"type": "color",
 				"value": "1 0.729 0.322"
 			},
 			"savestate": {
 				"order": 50,
-				"text": "Remember units out on calls",
+				"text": "Remember the CAD log and the day's calls",
 				"type": "bool",
 				"value": true
 			},
