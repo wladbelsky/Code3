@@ -13,8 +13,8 @@ User-facing docs: `README.md` (keep it in sync when behaviour or properties chan
 roll out / return, road graph (`roads.js`), traffic rules — done. 4. CAD: calls, unit assignment, status, line pools,
 the terminal UI — done. 5. Scenes on site: structure fire, crash, car fire, crews, transport to the hospital — done. 6. Helicopters
 (medevac, police) — done. 7. Civilian traffic yielding to lights and sirens — done. 8. Load from the music, persistence, the new panel (a graphite
-dispatch board), the splash and the settings drawer to match — done (see "Panel & persistence"). 9. Polish: performance, preview GIF (**`preview.gif` is still Forward Air Base's placeholder**),
-screenshots, README, Workshop.
+dispatch board), the splash and the settings drawer to match — done (see "Panel & persistence"). 9. Polish: performance (vegetation sectors, merged doors, instanced signal lamps), the animated
+preview GIF, screenshots, README — done; left: the Workshop upload (by hand, from WE) and GitHub Pages for the live demo.
 Original work in the genre: no names, logos, models or assets of existing games or real departments; the town is
 fictional (default FAIRHAVEN).
 
@@ -47,11 +47,12 @@ fictional (default FAIRHAVEN).
 | `js/properties.js` | **generated** from `project.json` — do not edit by hand |
 | `js/settings.js` | browser-only settings drawer, demo beat, audio-file player (returns early inside WE) |
 | `tools/gen_properties.py` | regenerates `js/properties.js` |
+| `tools/preview.spec.js` | renders image candidates (`powershell -ExecutionPolicy Bypass -File tools/test.ps1 -c tools/preview.config.js [-g gif]` → `test-results/gif-<seed>.gif` animated 256², scene only (a dusk house fire, the aerial up), + `-sheet.png` stills: the Workshop preview `preview.gif` from `project.json` — WE takes ≤ 256 px, < 1 MB (aim < 500 KB), encoded with the `gifenc` devDependency; `test-results/<scene>-<seed>.jpg` 1280x720 for each of `SCENES` (`-g "night,"` for one), `screenshots/<scene>.jpg` in README.md; copy the best over them). A scene whose moment never comes fails |
 | `tests/`, `playwright.config.js`, `package.json` | automated tests (Playwright Test) — see "Running & testing"; `tools/test.ps1` runs them in Docker, `.github/workflows/tests.yml` in CI |
 
 ## Rules / conventions
 - **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in
-  `index.html` (WE's CEF caches aggressively). Current: `v=11`.
+  `index.html` (WE's CEF caches aggressively). Current: `v=12`.
 - **New WE property**: add it to `project.json`, read it in `applyUserProperties` (`main.js`) into `CFG`,
   then run `python tools/gen_properties.py`. Property `order` decides the browser-drawer group
   (0–9 camera/time, 10–19 audio/calls, 20–29 terrain & season, 30–39 panel & terminal, 40–49 units, 50–59 town).
@@ -173,6 +174,8 @@ fictional (default FAIRHAVEN).
   drives on out of its way); it moves on once the unit's tail is by. The unit passes on the centre line (`latOff`
   −`LANE_OFF`, only along a street (`alongStreet`), sideways only while rolling, not with a unit coming the other way
   (`oncoming`)), back in 25 m before its stop (crawling if a car is still alongside); into a turn slowly, and back in first if a car comes the other way.
+  Coming back in, its `gapCap` measures the cars from the lane it is going to, not from where it is (a car pulled over
+  just short of its stop was out of its way on the centre line and right in it back in the lane: too late to brake).
 - **Obstacles** at the curb (units on scene, wrecks, burnt cars): a car eases left round them, slowly.
 - The tests count cars let into a box without committing (`TRAFFIC.intruded`, must be 0) and watch `civStill` (a car
   standing > 100 s) with the stuck detector.
@@ -214,7 +217,15 @@ fictional (default FAIRHAVEN).
 - **Static meshes are merged** via `mergeStatic(root, dynamicNodes)` (per material, all plain `M(colour)` together into
   `PLAIN_MAT`). Every node that moves, rotates, toggles `visible` or swaps its material at runtime (bay doors, signal
   lamps, signs) **must be listed as dynamic**. Don't keep references to static meshes after the builder returns.
-- Repeated objects are `InstancedMesh` (vegetation, street light pools).
+- Repeated objects are `InstancedMesh` (vegetation, street light pools, the signals' lit lamps: one mesh moved and
+  recoloured, `CITY.sigLamps`). **InstancedMesh turns `frustumCulled` off** (r149: its sphere is the geometry's): the
+  vegetation is one mesh per kind **and sector** (`VEG_CELL`) with the sector's own bounding sphere and culling back on —
+  one mesh for all 820 trees drew them all (and into the shadow map) for the ~20 on screen. A dynamic group that moves
+  as a whole (a bay door) is merged on its own (`mergeStatic(door, [])`).
+- Budget (a busy night, 3 calls, full traffic, default zoom): ~350 draw calls (shadow pass included), ~290k triangles,
+  `step()` ≈ 0.1 ms. Measure with `renderer.info` (`autoReset = false`, `reset()`, one `__t.render()`).
+- `THREE.MathUtils.generateUUID` uses `Math.random`: adding or removing objects shifts the seeded sequence, so the
+  town and the preview scenes change with them (tests must not depend on a seed's exact layout).
 - Shared scratch vectors must not be passed into a function that also writes them. Top-level names are global across
   all files: no duplicates.
 - Pools are ring buffers; spawn rates must not scale with FPS (time accumulators).

@@ -302,8 +302,8 @@ class Unit {
       if (k < cap) { cap = k; blocker = o; }
     }
     for (const o of CIVS) {   // civilian cars ahead in the lane (one pulled over at the curb, or passed on the centre line, is not)
-      if (!o.on) continue;
-      const dx = o.pos.x - this.pos.x, dz = o.pos.z - this.pos.z, along = dx * c + dz * s, lat = Math.abs(-dx * s + dz * c);
+      if (!o.on) continue;   // (coming back in off the centre line: measured from the lane, where it is going — not from where it is)
+      const dx = o.pos.x - this.pos.x, dz = o.pos.z - this.pos.z, along = dx * c + dz * s, l0 = -dx * s + dz * c, lat = Math.abs(this.passing ? l0 : l0 + (this.latOff || 0));
       if (along <= 0 || along > 60 || lat > (this.wid + o.wid) / 2 + 0.05 || Math.abs(angleWrap(o.pos.h - this.pos.h)) > 1.2) continue;   // (one across its way: yieldCap)
       const gap = along - (this.len + o.len) / 2 - 3, ov = o.v * Math.cos(o.pos.h - this.pos.h),
         k = ov >= 0 ? Math.sqrt(7 * (Math.max(0, gap) + ov * ov / 10)) : Math.max(0, Math.sqrt(7 * Math.max(0, gap)) + ov);

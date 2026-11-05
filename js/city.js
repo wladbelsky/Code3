@@ -43,11 +43,12 @@ const CITY = {
   },
   update(dt) {
     this.sigT += dt;
-    const ns = this.signal('ns'), ew = this.signal('ew');
-    for (const h of this.signals) {
-      const s = h.axis === 'ns' ? ns : ew; if (s === h.shown) continue; h.shown = s;
-      h.lamps[0].material = s === 'r' ? SIG_MATS.r : SIG_MATS.off; h.lamps[1].material = s === 'y' ? SIG_MATS.y : SIG_MATS.off; h.lamps[2].material = s === 'g' ? SIG_MATS.g : SIG_MATS.off;
+    const ns = this.signal('ns'), ew = this.signal('ew'), L = this.sigLamps; let moved = false;
+    for (const h of this.signals) {   // the head's lit lamp: moved over the red / amber / green one and recoloured
+      const s = h.axis === 'ns' ? ns : ew; if (s === h.shown) continue; h.shown = s; moved = true;
+      L.setMatrixAt(h.i, _sgM.copy(h.base).multiply(_sgT.makeTranslation(0, SIG_LAMP_Y[s], 0.19))); L.setColorAt(h.i, SIG_COL[s]);
     }
+    if (moved) { L.instanceMatrix.needsUpdate = true; L.instanceColor.needsUpdate = true; }
     for (const b of this.bays) for (const d of [b.door, b.rear]) {   // roll-up doors: up in ~4 s, down in ~5 s
       if (d.k === d.want) continue;
       d.k = d.want > d.k ? Math.min(d.want, d.k + dt / 4) : Math.max(d.want, d.k - dt / 5);
@@ -58,7 +59,8 @@ const CITY = {
   setTown(name) { for (const s of this.signs) if (s.town) drawSign(s, s.text(name)); }
 };
 const SIG_CYCLE = 50;
-const SIG_MATS = { r: M(0xff3020, { emissive: 0xff2010 }), y: M(0xffb020, { emissive: 0xff9a10 }), g: M(0x30ff90, { emissive: 0x10e070 }), off: M(0x262822) };
+const SIG_OFF = 0x262822, SIG_LAMP_Y = { r: 0.36, y: 0, g: -0.36 }, SIG_COL = { r: new THREE.Color(0xff3020), y: new THREE.Color(0xffb020), g: new THREE.Color(0x30ff90) };
+const _sgM = new THREE.Matrix4(), _sgT = new THREE.Matrix4();
 function pavedAt(x, z) {
   for (const s of L_.streets) if (Math.abs(z - s.z) < EDGE) return true;
   for (const a of L_.avenues) if (Math.abs(x - a.x) < EDGE) return true;
@@ -166,10 +168,18 @@ function buildSignals(g, dyn, x, z) {
     for (const [hx, hz, hy] of [[ex, ez, 5.4], [px, pz, 3.2]]) {
       const head = new THREE.Group(); head.position.set(hx, hy, hz); head.rotation.y = Math.atan2(fx, fz); g.add(head);
       box(head, 0.42, 1.15, 0.32, 0x2a2c24, 0, 0, 0);
-      const lamps = [0.36, 0, -0.36].map(y => { const l = box(head, 0.24, 0.24, 0.06, SIG_MATS.off, 0, y, 0.18); dyn.push(l); return l; });
-      CITY.signals.push({ axis, lamps, shown: null });
+      for (const y of [0.36, 0, -0.36]) box(head, 0.24, 0.24, 0.06, SIG_OFF, 0, y, 0.18);   // dark: merged with the rest
+      CITY.signals.push({ axis, head, i: CITY.signals.length, base: null, shown: null });
     }
   }
+}
+
+/* the lit lamps of all the signal heads: one InstancedMesh (one draw call, not three meshes a head swapping materials) */
+function buildSigLamps(g, dyn) {
+  g.updateMatrixWorld(true);
+  const L = CITY.sigLamps = new THREE.InstancedMesh(new THREE.BoxGeometry(0.25, 0.25, 0.07), new THREE.MeshBasicMaterial(), CITY.signals.length);
+  for (const h of CITY.signals) { h.base = h.head.matrixWorld.clone(); L.setMatrixAt(h.i, h.base); L.setColorAt(h.i, SIG_COL.r); }
+  L.frustumCulled = false; g.add(L); dyn.push(L);
 }
 
 /* street lights: every ~34 m on alternating sides, inside the town; none right at a crossing or across a driveway
@@ -207,6 +217,7 @@ function bayDoor(g, dyn, x, z, h, w, face) {
   box(dg, w, h, 0.1, BAY_DOOR, 0, -h / 2, 0);
   box(dg, w - 0.4, 0.5, 0.04, 0x3a4a58, 0, -h * 0.36, 0.06);                    // window strip
   for (let k = 1; k < 8; k++) box(dg, w, 0.03, 0.03, 0xbab8b0, 0, -k * h / 8, 0.06);
+  mergeStatic(dg, []);   // one mesh a door (it moves as a whole)
   return { g: dg, k: 0, want: 0 };
 }
 function buildComplex(g, dyn) {
@@ -441,7 +452,7 @@ function buildHouse(g, lot) {
 function buildCity() {
   const g = new THREE.Group(), dyn = [];
   CITY.winMat = windowMat();
-  buildStreets(g, dyn); buildComplex(g, dyn); buildHospital(g); buildCommerce(g); buildSchool(g); buildPark(g); buildHouses(g); buildStreetLights(g, dyn);
+  buildStreets(g, dyn); buildComplex(g, dyn); buildHospital(g); buildCommerce(g); buildSchool(g); buildPark(g); buildHouses(g); buildStreetLights(g, dyn); buildSigLamps(g, dyn);
   mergeStatic(g, [...dyn, ...CITY.signs.map(s => s.mesh)]);
   CITY.group = g;
   return g;

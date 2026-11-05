@@ -30,7 +30,8 @@ test('signals: one direction green at a time, all red between; every head shows 
     const r = await wp.run(() => {
       __t.sim(1);
       const ns = CITY.signal('ns'), ew = CITY.signal('ew');
-      const bad = CITY.signals.filter(h => h.shown !== (h.axis === 'ns' ? ns : ew)).length;
+      const m = new THREE.Matrix4(), p = new V3(), lit = (h) => (CITY.sigLamps.getMatrixAt(h.i, m), p.setFromMatrixPosition(m).distanceTo(h.head.localToWorld(new V3(0, SIG_LAMP_Y[h.shown], 0.19))) < 0.01);
+      const bad = CITY.signals.filter(h => h.shown !== (h.axis === 'ns' ? ns : ew) || !lit(h)).length;   // (the lit lamp over the right one)
       return { ns, ew, bad };
     });
     expect(r.ns === 'r' || r.ew === 'r', `both directions open: ${r.ns} / ${r.ew}`).toBe(true);
@@ -60,9 +61,14 @@ test('seasons rebuild the vegetation without leaking geometry; snow on the roofs
   }
   const r = await wp.run(() => ({ g: __t.geometries(), roof: HOUSE_ROOFS[0].color.getHex(), flat: ROOF_MAT.color.getHex() }));
   expect(r.g.leaked).toBe(0);
-  expect(r.g.reach).toBeLessThanOrEqual(base.reach + 2);
   expect(r.roof).toBe(0xe6ecf2);
   expect(r.flat).toBe(SEASONS_WINTER_ROOF);
+  // back to the first season: as many geometries as at the start (the vegetation sectors differ by season)
+  await wp.run(() => __t.props({ season: 'summer' }));
+  await wp.sim(2.1);
+  const back = await wp.run(() => __t.geometries());
+  expect(back.leaked).toBe(0);
+  expect(back.reach).toBeLessThanOrEqual(base.reach + 2);
 });
 const SEASONS_WINTER_ROOF = 0xe8eef4;
 

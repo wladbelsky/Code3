@@ -1,10 +1,12 @@
 'use strict';
 /* ===== Terrain: the ground around the town and its vegetation, by season (SEASONS / seasonNow in core.js) =====
    One big plane with a tiled canvas texture (grass / sand / snow speckles) and large-scale vertex-colour patches;
-   vegetation is one InstancedMesh per part (trunks, crowns…): a handful of draw calls for hundreds of trees.
+   vegetation is an InstancedMesh per kind and sector (VEG_CELL): trees out of the view are culled whole, also from the
+   shadow pass (one mesh for all 820 trees drew them all for the ~20 on screen).
    A season change rebuilds the texture and the vegetation (disposed, never leaked) and recolours the roofs (seasonMats).
    Where trees may grow is the town's business: CITY.vegAt(x, z) → 0 (never) .. 1 (open country).
    Weather: snowfall in winter, falling leaves in autumn — a points pool around the screen centre.          */
+const VEG_CELL = 120;   // vegetation sectors, m: one InstancedMesh per kind and sector, culled by its own bounding sphere
 const _tm = new THREE.Matrix4(), _tq = new THREE.Quaternion(), _ts = new V3(), _tp = new V3(), _tc = new THREE.Color();
 /* cheap value noise for patches and forest clumps (deterministic for a seed) */
 function vnoise(x, z, seed) {
@@ -87,12 +89,12 @@ const TERRAIN = {
     return t;
   },
   buildVeg(season) {
-    for (const v of this.veg) { scene.remove(v); v.geometry.dispose(); v.dispose(); }   // the mesh too: its instance buffers
+    for (const v of this.veg) { scene.remove(v); v.geometry.dispose(); v.dispose(); }   // the mesh too: its instance buffers (the shared attributes go with the first)
     this.veg = [];
     let seed = { spring: 11, summer: 23, autumn: 37, winter: 41 }[season];
     const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };   // same layout every rebuild
     for (const K of vegKinds(season)) {
-      const inst = new THREE.InstancedMesh(K.geo, VEG_MAT, K.n);
+      const cells = new Map();   // sector → [{ m, c, x, z, s }]
       let n = 0, tries = 0;
       while (n < K.n && tries++ < K.n * 30) {
         const r = Math.pow(rnd(), 0.7) * 420, a = rnd() * TAU, x = Math.cos(a) * r, z = Math.sin(a) * r;
@@ -100,13 +102,22 @@ const TERRAIN = {
         if (K.clump && k >= 1 && vnoise(x / 70, z / 70, 5 + K.n) < K.clump && rnd() > 0.08) continue;   // forests in clumps out of town
         const s = lerp(K.size[0], K.size[1], rnd()) * VEG_SCALE;
         _tq.setFromAxisAngle(WUP_T, rnd() * TAU); _ts.set(s, s * lerp(0.85, 1.2, rnd()), s);
-        inst.setMatrixAt(n, _tm.compose(_tp.set(x, 0, z), _tq, _ts));
-        inst.setColorAt(n, _tc.setHex(K.tint[Math.floor(rnd() * K.tint.length)]));
+        const key = Math.floor(x / VEG_CELL) + ',' + Math.floor(z / VEG_CELL), list = cells.get(key) || cells.set(key, []).get(key);
+        list.push({ m: _tm.compose(_tp.set(x, 0, z), _tq, _ts).clone(), c: K.tint[Math.floor(rnd() * K.tint.length)], x, z, s });
         n++;
       }
-      inst.count = n; inst.castShadow = true; inst.receiveShadow = true;
-      if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
-      scene.add(inst); this.veg.push(inst);
+      // a mesh per sector: its own geometry object (the kind's attributes shared: one GPU buffer) with the sector's sphere
+      for (const list of cells.values()) {
+        const g = new THREE.BufferGeometry(); for (const k in K.geo.attributes) g.setAttribute(k, K.geo.attributes[k]);
+        let cx = 0, cz = 0, r = 0; for (const e of list) { cx += e.x / list.length; cz += e.z / list.length; }
+        for (const e of list) r = Math.max(r, Math.hypot(e.x - cx, e.z - cz) + e.s * 4);
+        g.boundingSphere = new THREE.Sphere(new V3(cx, 1.5, cz), r);
+        const inst = new THREE.InstancedMesh(g, VEG_MAT, list.length);
+        list.forEach((e, i) => { inst.setMatrixAt(i, e.m); inst.setColorAt(i, _tc.setHex(e.c)); });
+        inst.frustumCulled = true;   // (InstancedMesh turns it off: its geometry's sphere is not the instances' — here it is)
+        inst.castShadow = true; inst.receiveShadow = true; inst.instanceColor.needsUpdate = true;
+        scene.add(inst); this.veg.push(inst);
+      }
     }
   },
   /* snowflakes / leaves: a pool of points falling through a box around the screen centre; spawn by time, not by frame */

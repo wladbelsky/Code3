@@ -3,11 +3,12 @@
 [![tests](https://github.com/wladbelsky/Code3/actions/workflows/tests.yml/badge.svg)](https://github.com/wladbelsky/Code3/actions/workflows/tests.yml)
 
 An isometric small town and its public safety center: a fire station, a police station and EMS, with the hospital,
-houses, a school and a park around them. The time of day follows your PC clock and the town follows the seasons.
+houses, a school and a park around them. Engines, ladders, ambulances, patrol cars and two helicopters roll out to
+calls on their own, lights and sirens, while the town's traffic pulls over for them; a dispatch terminal (CAD) logs the
+radio traffic. The music sets how busy the town is, the light bars flash to the beat, the time of day follows your PC
+clock and the town follows the seasons.
 From the author of [Forward Air Base](https://github.com/wladbelsky/air-base-wallpaper) and
 [Carrier Strike Group](https://github.com/wladbelsky/carrier-wallpaper).
-
-> **Work in progress.** Everything is in — the town, the units, the calls, the dispatch terminal, the scenes on site, the helicopters, the traffic and the dispatch board; polish and the Workshop release are next.
 
 ![The town by day](screenshots/day.jpg)
 
@@ -21,6 +22,13 @@ From source:
    `...\Steam\steamapps\common\wallpaper_engine\projects\myprojects\`,
    or in Wallpaper Engine choose **Open Wallpaper → Open from File** and pick `project.json`.
 2. Audio reaction needs audio recording enabled in the WE settings (it is on by default).
+3. The panel's collapse button needs mouse input enabled in WE. The mouse never moves the camera.
+
+## Performance
+
+Light on purpose: the town is a few hundred draw calls, the simulation a fraction of a millisecond a frame. To go
+lighter still: lower the **FPS limit** in Wallpaper Engine's settings (30 is plenty), turn **Shadows** off, lower
+**Civilian traffic**. Wallpaper Engine pauses it under fullscreen apps by default.
 
 ## The town
 
