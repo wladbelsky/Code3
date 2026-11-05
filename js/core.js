@@ -11,6 +11,7 @@ const smoothstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); retu
 function angleWrap(a) { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; }
 function approachAngle(cur, target, maxStep) { const d = angleWrap(target - cur); return cur + clamp(d, -maxStep, maxStep); }
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+const HTML_ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }, escHtml = s => String(s).replace(/[&<>"]/g, c => HTML_ESC[c]);   // text into innerHTML (the town name is the user's)
 
 /* Settings (overridden by Wallpaper Engine user properties) */
 const CFG = {

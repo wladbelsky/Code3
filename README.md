@@ -110,7 +110,7 @@ The music doesn't start a fight here: it sets how busy the town is. The longer a
 
 ## Browser preview
 
-Serve the folder (`python -m http.server 8766`) and open `http://localhost:8766/`. The ⚙ SETTINGS drawer mirrors the
+Serve the folder (`python -m http.server 8766`) and open `http://localhost:8766/`. The ⚙ Settings drawer mirrors the
 wallpaper properties and has a demo beat and an audio-file player. URL parameters: `?hour=22`, `?zoom=150`,
 `?season=winter`, `?demo=1`, `?ts=4` (time scale).
 

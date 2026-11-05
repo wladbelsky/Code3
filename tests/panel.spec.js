@@ -61,7 +61,33 @@ test('the CAD is remembered: the call numbers run on, today\'s calls and the log
   expect(after.log[after.log.length - 1]).toBe('CAD RECONNECTED');
   expect(after.lines).toBeGreaterThan(3);
   expect(await wp.run(() => { CFG.calls = 0; return DISPATCH.newCall('fall').id; })).toBe(`26-${110341 + before.seq}`);
-  // off: nothing written, nothing restored
-  await wp.run(() => { PERSIST.clear(); __t.props({ savestate: false }); PERSIST.save(); });
+  // off: what was kept is forgotten (init() restores before the properties come in), nothing written, nothing restored
+  expect(await wp.run(() => { PERSIST.save(); return !!localStorage.getItem(PERSIST.KEY); })).toBe(true);
+  await wp.run(() => { __t.props({ savestate: false }); PERSIST.save(); });
   expect(await wp.run(() => localStorage.getItem(PERSIST.KEY))).toBe(null);
+  await wp.reload();
+  expect(await wp.run(() => ({ restored: PERSIST.restored, seq: DISPATCH.seq }))).toEqual({ restored: false, seq: 0 });
+});
+
+test('restarts in a row keep one CAD RECONNECTED; a bad saved line does not stop the start', async ({ wp }) => {
+  await wp.boot();
+  await wp.run(() => (CFG.saveState = false, localStorage.setItem(PERSIST.KEY, JSON.stringify({ v: 1, seq: 7, load: 0, stats: {}, log: [null, 5,
+    { who: 'CAD', text: 'CAD RECONNECTED', kind: 'sys', at: 0 }, { who: 'CAD', text: '#26-110347  CLOSED', kind: 'sys', at: 0 }] }))));   // (off for the way out: the reload's save would overwrite it)
+  await wp.reload();
+  const r = await wp.run(() => ({ ready, seq: DISPATCH.seq, log: RADIO.log.map(l => l.text) }));
+  expect(r.ready).toBe(true);
+  expect(r.seq).toBe(7);
+  expect(r.log).toEqual(['#26-110347  CLOSED', 'CAD RECONNECTED']);
+});
+
+test('the call cards escape the town name (the school\'s address carries it)', async ({ wp }) => {
+  await wp.boot();
+  const r = await wp.run(() => {
+    __t.props({ townname: 'A<B & C' }); CFG.calls = 0;
+    const c = DISPATCH.newCall('medical'); c.site = Object.assign({}, c.site, { name: `${CFG.townName} HIGH SCHOOL, 300 OAK ST` });
+    __t.sim(1);
+    return { card: document.querySelector('#callcards .c2').textContent, term: document.querySelector('#cad .card .a').textContent };
+  });
+  expect(r.card).toContain('A<B & C HIGH SCHOOL');
+  expect(r.term).toContain('A<B & C HIGH SCHOOL');
 });

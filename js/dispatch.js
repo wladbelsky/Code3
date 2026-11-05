@@ -173,7 +173,7 @@ const TERM = {
     setCls(this.hdr, 'cad-hdr' + (T < this.toneUntil && Math.floor(T * 4) % 2 ? ' tone' : ''));
     const cls = u => u.callRef !== null && u.state === 'turnout' ? 'dsp' : u.state === 'responding' || u.state === 'pullout' ? 'enr' : u.state === 'on_scene' || u.state === 'away' ? 'osc' : 'avl';
     const html = DISPATCH.calls.filter(c => c.status !== 'closed' || T - c.closedAt < 6).slice(-3).reverse().map(c =>
-      `<div class="card ${c.status}"><div><b>#${c.id}</b><i>${c.type.name}</i><s>${CALL_STATUS[c.status]}</s></div><div class="a">${c.site.name}${c.site.cross && !c.site.name.includes(c.site.cross) ? ' · ' + c.site.cross : ''}</div><div class="us">${c.units.map(u => `<span class="${u.callRef === c ? cls(u) : 'clr'}">${u.short}</span>`).join('')}</div></div>`).join('');
+      `<div class="card ${c.status}"><div><b>#${c.id}</b><i>${c.type.name}</i><s>${CALL_STATUS[c.status]}</s></div><div class="a">${escHtml(c.site.name + (c.site.cross && !c.site.name.includes(c.site.cross) ? ' · ' + c.site.cross : ''))}</div><div class="us">${c.units.map(u => `<span class="${u.callRef === c ? cls(u) : 'clr'}">${u.short}</span>`).join('')}</div></div>`).join('');
     if (html !== this.cardsHtml) { this.cardsHtml = html; this.callsEl.innerHTML = html; }
   }
 };

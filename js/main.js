@@ -34,7 +34,7 @@ window.wallpaperPropertyListener = {
     if (has('terminal')) CFG.terminal = p.terminal.value;
     if (has('terminalposition')) CFG.termPos = p.terminalposition.value;
     if (has('uicolor')) CFG.uiColor = rgbFromWE(p.uicolor.value);
-    if (has('savestate')) CFG.saveState = p.savestate.value;
+    if (has('savestate')) { CFG.saveState = p.savestate.value; if (!CFG.saveState) PERSIST.clear(); }   // (off: forget it, or the next start would restore it: init() runs before the properties come)
     if (has('townname')) CFG.townName = String(p.townname.value || '').trim().toUpperCase().slice(0, 18) || 'FAIRHAVEN';
     applySettings();
   },
@@ -173,12 +173,13 @@ function updateLights() {
    The music doesn't start a fight here: it is how busy the town is. LOAD.level (0..1) climbs while sound plays (faster
    when it is dense and loud) and drains slowly in silence; the dispatcher reads it for how often calls come in and how
    big they get. Beats flash the light bars in time. Short notification sounds barely move it. */
+const LOAD_LABELS = ['ROUTINE', 'BUSY', 'HEAVY', 'SURGE'], loadLv = v => v < 0.25 ? 0 : v < 0.55 ? 1 : v < 0.8 ? 2 : 3;   // (the label, its colour and the bar's cells)
 const LOAD = { level: 0, label: 'ROUTINE',
   update(dt) {
     const target = AUD.active && AUD.soundStart >= 0 && RT() - AUD.soundStart > 3 ? clamp(0.35 + AUD.heavy * 0.75, 0, 1) : 0;
     this.level += (target - this.level) * dt * (target > this.level ? 0.035 : 0.012);
     this.level = clamp(this.level, 0, 1);
-    this.label = this.level < 0.25 ? 'ROUTINE' : this.level < 0.55 ? 'BUSY' : this.level < 0.8 ? 'HEAVY' : 'SURGE';
+    this.label = LOAD_LABELS[loadLv(this.level)];
   } };
 const AUD = { level: 0, lastActive: -99, soundStart: -1, raw: new Float32Array(128), demo: false, heavy: 0, beat: -9,
   get active() { return RT() - this.lastActive < 1.6; } };
@@ -260,14 +261,15 @@ function buildUI() {
   };
   const meter = document.getElementById('meter');
   for (let i = 0; i < 40; i++) meter.appendChild(document.createElement('i'));
-  const lb = document.getElementById('loadbar');
-  for (let i = 0; i < 10; i++) { const c = document.createElement('i'); c.className = 'l' + (1 + Math.floor(i / 2.5)); lb.appendChild(c); }
-  const tiles = document.getElementById('units'); tiles.textContent = '';
+  const lb = document.getElementById('loadbar');   // a cell takes the colour of the tier the load is in when it lights up
+  for (let i = 0; i < 10; i++) { const c = document.createElement('i'); c.className = 'l' + (1 + loadLv((i + 0.5) / 10)); lb.appendChild(c); }
+  const tiles = document.getElementById('units'); tiles.textContent = ''; TILED.length = 0;
   for (const u of [...UNITS, ...HELIS]) {
     const t = document.createElement('div'); t.className = 'tile ' + u.spec.svc; t.innerHTML = '<b></b><span></span>';
-    t.children[0].textContent = u.short; tiles.appendChild(t); u.tile = { el: t, st: t.children[1] };
+    t.children[0].textContent = u.short; tiles.appendChild(t); u.tile = { el: t, st: t.children[1] }; TILED.push(u);
   }
 }
+const TILED = [];   // the units and helicopters with a tile (buildUI)
 /* the panel's DOM is written only where a value changed (4×/s: a rewrite invalidates style and layout every time) */
 const setTxt = (el, t) => { if (el._t !== t) { el._t = t; el.textContent = t; } };
 const setCls = (el, c) => { if (el._c !== c) { el._c = c; el.className = c; } };
@@ -279,19 +281,18 @@ function updateUI() {
   if (mi !== uiMinute) { uiMinute = mi; setTxt(uiEl('clock'), now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })); }
   const e = ENV.elev, s = PERSIST.today();
   setTxt(uiEl('daystate'), (e > 6 ? 'Day' : e > -6 ? 'Twilight' : 'Night') + ' · ' + TERRAIN.season[0].toUpperCase() + TERRAIN.season.slice(1));
-  if (uiEl('calls')._n !== s.calls) { uiEl('calls')._n = s.calls; uiEl('calls').innerHTML = `Calls today <b>${s.calls}</b>`; }
+  setTxt(uiEl('callsn'), s.calls);
   const n = Math.round(LOAD.level * 10), cells = uiEl('loadbar').children;
   for (let i = 0; i < cells.length; i++) cells[i].classList.toggle('on', i < Math.max(1, n));
   const ld = uiEl('load'); setTxt(ld, LOAD.label + (FILE_AUDIO.playing ? ' · file' : AUD.demo && DEMO.on ? ' · demo' : ''));
-  setCls(ld, 'lv' + Math.min(3, Math.floor(LOAD.level * 4)));
-  for (const u of [...UNITS, ...HELIS]) {
-    if (!u.tile) continue;
+  setCls(ld, 'lv' + loadLv(LOAD.level));
+  for (const u of TILED) {
     const [lab, cls] = TILE_STATES[u.state] || [u.state, ''];
     setTxt(u.tile.st, u.air && u.state === 'quarters' ? 'On pad' : lab); setCls(u.tile.el, 'tile ' + u.spec.svc + ' ' + cls);
   }
   const open = DISPATCH.calls.filter(c => c.status !== 'closed').slice(-3).reverse();
-  const html = open.length ? open.map(c => `<div class="cc ${c.status}"><div class="c1"><b>${c.type.name}</b><s>${CALL_STATUS[c.status]}</s></div>` +
-    `<div class="c2">${c.site.name} <span class="num">#${c.id}</span></div><div class="c3">${c.units.filter(u => u.callRef === c).map(u => u.short).join(' ') || '—'} · ${Math.floor((T - c.t) / 60)} min</div></div>`).join('')
+  const html = open.length ? open.map(c => `<div class="cc ${c.status}"><div class="c1"><b>${escHtml(c.type.name)}</b><s>${CALL_STATUS[c.status]}</s></div>` +
+    `<div class="c2">${escHtml(c.site.name)} <span class="num">#${c.id}</span></div><div class="c3">${c.units.filter(u => u.callRef === c).map(u => u.short).join(' ') || '—'} · ${Math.floor((T - c.t) / 60)} min</div></div>`).join('')
     : '<div class="none">No active calls</div>';
   if (html !== cardsHtml) { cardsHtml = html; uiEl('callcards').innerHTML = html; }
 }

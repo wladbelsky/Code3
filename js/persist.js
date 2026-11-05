@@ -3,7 +3,9 @@
    Remembers the CAD's call counter (the numbers run on), the day's call count by service (the panel), the last lines
    of the radio log (back on the terminal, with their times) and the load (LOAD) — not the units: they start in
    quarters and the calls that were open are gone (the terminal says it reconnected). localStorage (WE keeps it per
-   wallpaper), written every 10 s only when something changed, and on the way out; off with CFG.saveState. */
+   wallpaper), written every 10 s only when something changed, and on the way out; off with CFG.saveState (turning it
+   off forgets what was kept: main.js). */
+const RECONNECTED = 'CAD RECONNECTED';
 const PERSIST = {
   KEY: 'code3.cad.v1', timer: 10, last: null, restored: false,
   stats: { day: '', calls: 0, fire: 0, ems: 0, pd: 0 },
@@ -29,8 +31,11 @@ const PERSIST = {
     DISPATCH.seq = Math.max(DISPATCH.seq, d.seq | 0);
     if (typeof d.load === 'number') LOAD.level = clamp(d.load, 0, 1);
     if (d.stats && d.stats.day === this.dayKey()) this.stats = Object.assign(this.today(), d.stats);
-    for (const e of d.log) { const l = { who: String(e.who), text: String(e.text), kind: String(e.kind), at: new Date(e.at) }; RADIO.log.push(l); if (RADIO.onLine) RADIO.onLine(l); }
-    RADIO.say('CAD', 'CAD RECONNECTED', 'sys');
+    for (const e of d.log) {   // (not the last reconnect: restarts in a row would fill the log with them; a bad entry must not stop init())
+      if (!e || typeof e !== 'object' || e.text === RECONNECTED) continue;
+      const l = { who: String(e.who), text: String(e.text), kind: String(e.kind), at: new Date(e.at) }; RADIO.log.push(l); if (RADIO.onLine) RADIO.onLine(l);
+    }
+    RADIO.say('CAD', RECONNECTED, 'sys');
     return true;
   },
   update(dt) { if ((this.timer -= dt) <= 0) { this.timer = 10; this.save(); } }

@@ -51,7 +51,7 @@ fictional (default FAIRHAVEN).
 
 ## Rules / conventions
 - **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in
-  `index.html` (WE's CEF caches aggressively). Current: `v=10`.
+  `index.html` (WE's CEF caches aggressively). Current: `v=11`.
 - **New WE property**: add it to `project.json`, read it in `applyUserProperties` (`main.js`) into `CFG`,
   then run `python tools/gen_properties.py`. Property `order` decides the browser-drawer group
   (0–9 camera/time, 10–19 audio/calls, 20–29 terrain & season, 30–39 panel & terminal, 40–49 units, 50–59 town).
@@ -97,7 +97,8 @@ fictional (default FAIRHAVEN).
   at the curb half on the sidewalk (`houseDest`: `ROAD_W/2 + 0.5` from the centre line), off the lane: nobody has to
   get round it. `farDest`: out of town to a street's far end (`away`, hidden; back one at a time when the end is clear).
 - **States**: quarters → turnout → [pullout] → responding (code 3, lights) → on_scene / away → returning (code 1)
-  → [parking] → quarters. `UNIT_STATES` = panel labels; a new state needs an entry there (the harness checks).
+  → [parking] → quarters. `UNIT_STATES` = state labels, `TILE_STATES` (`main.js`) = the board's tiles; a new state needs an
+  entry in both (the harness checks; a helicopter's: `HELI_STATES` and `TILE_STATES`).
 - **Zones** (`ZONES`: apron, yard, lot) — one unit at a time: a crew ready to roll books the apron / the lot (`take(z,
   true)`; it may take it over from one still > 60 m out on its way home), freed once `clear`; a unit coming home books
   the yard / the lot ~40 m before its waiting point (`waitS`: in the lane at z 14 / 28 m short of the gate; never in a
@@ -193,7 +194,7 @@ fictional (default FAIRHAVEN).
 ## Panel & persistence (`index.html`, `style.css`, `js/main.js`, `js/persist.js`)
 - **The panel** is a flat graphite dispatch board (not FAB's radar look): a red-blue stripe, the header (a `911` badge in
   the accent colour — property `uicolor` — the town, the clock), the day and the season, today's calls, the load (10
-  cells: `#loadbar`, label `#load`), the sound (`#meter`), the units as status tiles (`#units`: one per unit and
+  cells: `#loadbar`, label `#load`; the label, its colour and the cells' colours all from `loadLv`), the sound (`#meter`), the units as status tiles (`#units`: one per unit and
   helicopter, built in `buildUI`; the service's colour on the left edge, the status as the tile's colour —
   `TILE_STATES`: avl / ret green, dsp / enr amber, osc red, trn blue), the open calls as cards (`#callcards`, at most 3).
   Sans-serif text, monospace only for numbers and callsigns. `updateUI` (4×/s) writes only what changed (`setTxt` /
@@ -202,7 +203,10 @@ fictional (default FAIRHAVEN).
 - **Persistence** (`PERSIST`, property `savestate`): `code3.cad.v1` in localStorage, every 10 s only when changed and on
   `pagehide` / hiding: the call counter (`DISPATCH.seq`: the numbers run on), today's calls by service (`count` from
   `DISPATCH.newCall`; a new day starts again), the last 9 log lines (back on the terminal with their times, then
-  `CAD RECONNECTED`), the load (rounded to 0.05). Not the units: they start in quarters, open calls are dropped.
+  `CAD RECONNECTED`, one: the previous one is not restored), the load (rounded to 0.05). Not the units: they start in
+  quarters, open calls are dropped. `restore()` runs in `init()`, before the properties come in: turning `savestate` off
+  clears the key (`applyUserProperties`), or the next start would restore it. Text into `innerHTML` goes through
+  `escHtml` (site names carry the town name).
 
 ## Performance & memory invariants (the wallpaper never restarts — leaks accumulate for days)
 - **Never create geometry per spawn and drop it.** Pool and clone templates; anything removed for good is disposed

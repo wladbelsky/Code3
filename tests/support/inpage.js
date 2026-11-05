@@ -41,7 +41,7 @@
   H.checkInvariants = () => {
     const v = [], who = u => `${u.cs}[${u.state}]`;
     for (const u of UNITS) {
-      if (!UNIT_STATES[u.state]) v.push(`unknown state ${who(u)}`);
+      if (!UNIT_STATES[u.state] || !TILE_STATES[u.state]) v.push(`unknown state ${who(u)}`);   // (a label and a tile on the board)
       if (!Number.isFinite(u.pos.x + u.pos.z + u.pos.h + u.v)) v.push(`NaN ${who(u)}`);
       if (u.state === 'quarters' && Math.hypot(u.pos.x - u.home.x, u.pos.z - u.home.z) > 0.05) v.push(`in quarters away from home ${who(u)}`);
       const b = u.home.bay;   // through a door only when it is up
@@ -61,7 +61,7 @@
     }
     // helicopters: known states, never below the ground or the pad, the rotor up to speed whenever they are off it
     for (const h of HELIS) {
-      if (!HELI_STATES[h.state]) v.push(`unknown state ${who(h)}`);
+      if (!HELI_STATES[h.state] || !TILE_STATES[h.state]) v.push(`unknown state ${who(h)}`);
       if (!Number.isFinite(h.pos.x + h.pos.y + h.pos.z + h.h + h.v)) v.push(`NaN ${who(h)}`);
       if (h.pos.y < -0.01) v.push(`${who(h)} below the ground`);
       if (h.state === 'quarters' && h.pos.distanceTo(h.pad) > 0.05) v.push(`on the pad away from it ${who(h)}`);
