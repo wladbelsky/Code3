@@ -7,7 +7,7 @@ houses, a school and a park around them. The time of day follows your PC clock a
 From the author of [Forward Air Base](https://github.com/wladbelsky/air-base-wallpaper) and
 [Carrier Strike Group](https://github.com/wladbelsky/carrier-wallpaper).
 
-> **Work in progress.** The town, the units, the calls, the dispatch terminal, the scenes on site and the helicopters are in; civilian traffic is next.
+> **Work in progress.** The town, the units, the calls, the dispatch terminal, the scenes on site, the helicopters and the traffic are in; the new panel and the music's load are next.
 
 ![The town by day](screenshots/day.jpg)
 
@@ -48,6 +48,12 @@ From source:
   stop signs, and pull over at the curb on scene; on the way back they stop at red lights.
 - The fire station has drive-through bays: out through the front doors onto Main St, back in from the yard behind,
   up the lane beside the station; patrol cars back out of their stalls and pull in nose first.
+
+- **Traffic**: cars pass through town by the lights and the stop signs. When a unit comes up with lights and siren they
+  pull over to the curb and stop, and the unit passes on the centre line; otherwise they give way to units turning across,
+  and back off a little if one has to get by. Property **Civilian traffic** sets how many by day (fewer at night).
+
+![An engine passing traffic pulled over on Main St](screenshots/traffic.jpg)
 
 ![A winter night run](screenshots/run.jpg)
 

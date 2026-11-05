@@ -12,7 +12,7 @@ User-facing docs: `README.md` (keep it in sync when behaviour or properties chan
 1. Skeleton from FAB — done. 2. Town and complex (`city.js`) — done. 3. Units: apparatus models, `Unit` state machine,
 roll out / return, road graph (`roads.js`), traffic rules — done. 4. CAD: calls, unit assignment, status, line pools,
 the terminal UI — done. 5. Scenes on site: structure fire, crash, car fire, crews, transport to the hospital — done. 6. Helicopters
-(medevac, police) — done. 7. Civilian traffic yielding to lights and sirens. 8. Load from the music, persistence, panel,
+(medevac, police) — done. 7. Civilian traffic yielding to lights and sirens — done. 8. Load from the music, persistence, panel,
 properties; **a new panel design** — the FAB / CSG "radar" look (glowing green on black, monospace everywhere) goes:
 a flat graphite dispatch board with a red-blue header stripe, sans-serif text (monospace only for numbers), units as
 status tiles (service colour + status colour: AVAIL green, ENRT amber, ONSC red, TRAN blue, OOS grey), active calls
@@ -25,7 +25,7 @@ fictional (default FAIRHAVEN).
 - Plain JS, no build step, no npm. `'use strict'` classic scripts sharing **global** scope
   (no modules). three.js **r149** is vendored as `js/three.min.js` — never edit it.
 - `index.html` loads scripts in dependency order (later files use globals of earlier ones):
-  `core → models → vehicles → city → terrain → effects → roads → units → radio → incidents → dispatch → scenes → helis → main → properties → settings`,
+  `core → models → vehicles → city → terrain → effects → roads → units → traffic → radio → incidents → dispatch → scenes → helis → main → properties → settings`,
   then an inline script registers the WE audio listener (or starts the browser demo beat).
   `main.js` calls `init()` at its end, so anything `init()` needs must be defined before `main.js`.
 
@@ -38,6 +38,7 @@ fictional (default FAIRHAVEN).
 | `js/terrain.js` | `TERRAIN`: the ground (tiled canvas texture + vertex-colour patches), the vegetation per season (InstancedMesh per kind, placed where `CITY.vegAt` allows), weather particles (snowfall, falling leaves) |
 | `js/roads.js` | `ROADS`: the street graph (crossings + far ends), `route(from, to)` (Dijkstra over node × heading: no U-turns on screen), `lane` (right-hand offsets), `way(from, to, pre, post, o)`; `Way` (rounded, sampled polyline with headings and a curvature / braking speed limit) — see "Units & traffic" |
 | `js/units.js` | `UNIT_TYPES`, `ROSTER`, `HOSP` (the ER places), `Unit` (homes, run state machine, zones, traffic rules, light bars; `radio` / `short` names, `callRef`; `transport` / `leaveHospital`; the ladder's aerial: `aimAerial`, `aerialTip`, `aerialK` / `aerialWant`), `UNITS`, `ZONES`, `houseDest` / `farDest` — see "Units & traffic" |
+| `js/traffic.js` | `CIVS` (a pool of `CIV_MAX` civilian cars), `Civ` (spawn off screen → across town → off screen; following, crossings and their boxes `CIV_BOXES`, giving way to units `unitCap`, pulling over for code 3, easing round obstacles, backing off), `TRAFFIC` (spawning by `trafficWanted`: `CFG.traffic` by the hour), `wayBoxes`, `boxConflict`, `alongStreet` — see "Civilian traffic" |
 | `js/radio.js` | line pools (`DISPATCH_LINES`, `ACK_LINES`, `ON_SCENE`, `UPDATE_LINES`, `CLEAR_LINES`…), `radioLine(pool, vars)`, load tiers, `cadNow`, `RADIO` (the queue the terminal prints) — see "CAD" |
 | `js/incidents.js` | `INCIDENT_TYPES`, sites (houses, `BUSINESSES`, street spots, crossings, far ends), `pickSite`, `siteSlots`, `siteDest` |
 | `js/dispatch.js` | `DISPATCH` (calls, assignment, the call's course, `onState`), `TERM` (the CAD terminal DOM) |
@@ -52,7 +53,7 @@ fictional (default FAIRHAVEN).
 
 ## Rules / conventions
 - **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in
-  `index.html` (WE's CEF caches aggressively). Current: `v=8`.
+  `index.html` (WE's CEF caches aggressively). Current: `v=9`.
 - **New WE property**: add it to `project.json`, read it in `applyUserProperties` (`main.js`) into `CFG`,
   then run `python tools/gen_properties.py`. Property `order` decides the browser-drawer group
   (0–9 camera/time, 10–19 audio/calls, 20–29 terrain & season, 30–39 panel & terminal, 40–49 units, 50–59 town).
@@ -101,8 +102,10 @@ fictional (default FAIRHAVEN).
   → [parking] → quarters. `UNIT_STATES` = panel labels; a new state needs an entry there (the harness checks).
 - **Zones** (`ZONES`: apron, yard, lot) — one unit at a time: a crew ready to roll books the apron / the lot (`take(z,
   true)`; it may take it over from one still > 60 m out on its way home), freed once `clear`; a unit coming home books
-  the yard / the lot ~40 m before its waiting point (`waitS`: in the lane at z 14 / 28 m short of the gate) and waits
-  there while it is busy, first come first served (`waitSince`); freed in quarters. Every zone holder must reach a
+  the yard / the lot ~40 m before its waiting point (`waitS`: in the lane at z 14 / 28 m short of the gate; never in a
+  crossing's box — at its line instead) and waits
+  there while it is busy, the nearest to its waiting point first (`homeRem`: a lane's order; it takes the zone over from a
+  holder that fell behind it); freed in quarters. Every zone holder must reach a
   state that frees it (quarters, `arrive`).
 - **Traffic rules** (per step, in `drive`): `gapCap` (follow the unit ahead in the lane: stop within the gap allowing
   for its own braking), `crossCap` (code 1 stops at the line on red / rolls through stops; code 3 slows to 6 m/s through
@@ -150,6 +153,30 @@ fictional (default FAIRHAVEN).
   code 3 at 25 %): in at `HOSP.inX`, under the canopy to a free place (`HOSP.slots`), `at_hospital` 40–80 s, out at
   `HOSP.outX` and home (`leaveHospital` → `goHome(from, pre)`). Its radio goes on without the call (`onState`, `!callRef`).
 - **CrashScene**: the wrecks 11 / 17 m from the crossing; the units' curb (`crossingSite`) 30 m up the approach.
+
+## Civilian traffic (`js/traffic.js`)
+- A pool of `CIV_MAX` (14) cars built once; `CFG.traffic` (property **traffic**) of them by day, a quarter at night
+  (`trafficWanted`). Each comes in off the screen on a street end (`spawn`: the first point off the screen ≥ 175 m out) and
+  leaves off the screen on another (`ROADS.way` on the right lane, `vmax` 10–12.5), then goes back to the pool.
+- **Crossings** (`way.boxes` from `wayBoxes`: key, way distances in / out, entry / exit headings, signal): stop at the line
+  on red (or yellow when it can), a full stop then in turn at all-way stops; into a box only when no car committed to it
+  (`CIV_BOXES`) and no unit in it, at its line (free to go: no red) or due within 3.5 s makes a crossing move
+  (`boxConflict`: same entry heading or opposite straights don't cross). Committed, it clears the box.
+- **Units**: cars give way to units, units to no car. `Civ.unitCap`: short of where a unit is going (its way ~3.5 s ahead;
+  one held at a red light or waiting for its zone (`held`) claims only its body, one standing 10 m), if the car can still
+  stop or already brakes for it; on that way or past stopping it clears it — but never into the unit's body (front /
+  middle / back points); merging into one lane, the one nearer the merge goes first. A unit only never drives into a car
+  on its path within its stopping distance (`Unit.yieldCap`), waits at a crossing's line while a car is in its box (or
+  can no longer stop short of it: `crossCap`), and follows cars ahead in its lane (`gapCap`, not one across its way). A
+  car nose to nose with a unit that waits for it backs off up to 8 m (`jamT`, `behindBy`).
+- **Code 3**: a car with a code-3 unit coming within 70 m pulls over to the curb (`lat` +1.2) and stops — unless the
+  curb is taken (then it just slows), its nose is in a box (it clears it first) or the unit stops right there (then it
+  drives on out of its way); it moves on once the unit's tail is by. The unit passes on the centre line (`latOff`
+  −`LANE_OFF`, only along a street (`alongStreet`), sideways only while rolling, not with a unit coming the other way
+  (`oncoming`)), back in 25 m before its stop (crawling if a car is still alongside); into a turn slowly, and back in first if a car comes the other way.
+- **Obstacles** at the curb (units on scene, wrecks, burnt cars): a car eases left round them, slowly.
+- The tests count cars let into a box without committing (`TRAFFIC.intruded`, must be 0) and watch `civStill` (a car
+  standing > 100 s) with the stuck detector.
 
 ## Helicopters (`js/helis.js`)
 - **Air 1** (police) lives on the complex's pad (`CITY_LAYOUT.helipad`), **Medevac 1** on the hospital's roof pad. They

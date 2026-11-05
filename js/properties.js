@@ -98,6 +98,14 @@ const WE_PROPERTIES = {
   "max": 10,
   "value": 5
  },
+ "traffic": {
+  "order": 41,
+  "text": "Civilian traffic (cars by day)",
+  "type": "slider",
+  "min": 0,
+  "max": 14,
+  "value": 8
+ },
  "season": {
   "order": 20,
   "text": "Season",

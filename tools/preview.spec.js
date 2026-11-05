@@ -27,6 +27,14 @@ const SCENES = {
   // Medevac 1 settling onto the landing zone for an entrapment, the dust blowing out from under it
   medevac: { hour: 11, season: 'spring', zoom: 230, at: [0, 0], prep: () => { CFG.calls = 0; const c = DISPATCH.newCall('entrapment'), l = lzFor(c.site); CAM_TGT.set(l.x, 3, l.z); updateCamera(); },
     until: () => HELIS[1].ph === 'descend' && HELIS[1].pos.y < 3.5 },
+  // traffic on Main St pulled over to the curb, the engine going by on the centre line (the camera rides along)
+  traffic: { hour: 16, season: 'summer', zoom: 220, at: [0, 0], prep: () => { CFG.calls = 0; CFG.traffic = 14; __t.sim(90); UNITS[0].dispatch({ far: { ax: 'ew', at: 50, a: 520, dir: 'E' } }); },
+    until: () => {   // (a slow car put 45 m ahead of it once it is out on Main St)
+      const u = UNITS[0]; let c = window.__pc;
+      if (!c && u.state === 'responding' && u.pos.z > 47 && u.pos.x > -10) { c = window.__pc = CIVS.find(c => !c.on); c.start(ROADS.way({ ax: 'ew', at: 50, a: u.pos.x + 45, dirs: ['E'] }, { ax: 'ew', at: 50, a: 480, dir: 'E' }, null, null, { vmax: 7, alat: 2.2, vEnd: 7 })); }
+      CAM_TGT.set(u.pos.x + 6, 0, u.pos.z); updateCamera();
+      return c && u.latOff < -2 && c.pulled && Math.abs(c.pos.x - u.pos.x) < 6;
+    } },
   // a winter night run: the engine and a medic pulling out onto Main St, lights going
   run: { hour: 21.5, season: 'winter', zoom: 190, at: [-12, 38], prep: () => { CFG.calls = 0; UNITS[0].dispatch(houseDest(CITY.houses[22], 0)); UNITS[3].dispatch(houseDest(CITY.houses[22], 1)); },
     until: () => UNITS[0].state === 'responding' && UNITS[0].pos.z > 49 && UNITS[0].pos.x > -24 }

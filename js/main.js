@@ -24,6 +24,7 @@ window.wallpaperPropertyListener = {
     if (has('fixedhour')) CFG.fixedHour = p.fixedhour.value;
     if (has('audiosensitivity')) CFG.sens = p.audiosensitivity.value;
     if (has('callfrequency')) CFG.calls = p.callfrequency.value;
+    if (has('traffic')) CFG.traffic = p.traffic.value;
     if (has('shadows')) CFG.shadows = p.shadows.value;
     if (has('season') && !QS.has('season')) CFG.season = p.season.value;
     if (has('weather')) CFG.weather = p.weather.value;
@@ -91,7 +92,7 @@ function init() {
 
   ready = true;
   window.addEventListener('resize', resize);
-  buildUnits(); buildHelis();
+  buildUnits(); buildHelis(); buildTraffic();
   TERM.build();
   buildUI(); applySettings(); resize(); updateEnvironment(); updateLights();
   requestAnimationFrame(frame);
@@ -319,6 +320,7 @@ function step(dt) {
   CITY.update(dt);
   for (const u of UNITS) u.update(dt);
   for (const h of HELIS) h.update(dt);
+  TRAFFIC.update(dt);   // (after the units: they decide who gives way)
   DISPATCH.update(dt);
   RADIO.update(dt);
   LOAD.update(dt);
@@ -333,7 +335,7 @@ function step(dt) {
   TERRAIN.update(dt);
   updateLights();
 
-  envTimer -= dt; if (envTimer <= 0) { envTimer = 2; updateEnvironment(); }
+  envTimer -= dt; if (envTimer <= 0) { envTimer = 2; updateEnvironment(); TRAFFIC.tidy(); }
   uiTimer -= dt; if (uiTimer <= 0) { uiTimer = 0.25; updateUI(); TERM.update(); }
   meterTimer -= dt; if (meterTimer <= 0) { meterTimer = 0.05; updateMeter(); }
 }

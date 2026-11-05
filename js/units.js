@@ -74,13 +74,16 @@ class Unit {
     this.model.group.position.set(x, 0, z); this.model.group.rotation.y = -this.yaw;
   }
   /* ---- zones ---- */
-  /* book a zone: a crew ready to roll (out) takes it over from one still well out on its way home; on the way home it is
-     first come, first served, and nobody books while a crew waits to roll out */
+  /* book a zone: a crew ready to roll (out) takes it over from one still well out on its way home; on the way home the
+     nearest to its waiting point goes first (they queue in a lane: the order is where they are, not who asked first) —
+     it even takes the zone over from a holder that has fallen behind it — and nobody books while a crew waits to roll out */
+  get homeRem() { return this.state === 'returning' && this.way && this.way === this.firstWay ? this.waitS - this.way.s : Infinity; }
   take(z, out) {
-    const h = ZONES[z]; if (h === this) return true;
+    let h = ZONES[z]; if (h === this) return true;
+    if (!out && h && h.homeRem < Infinity && h.homeRem > Math.max(0, this.homeRem) + 5) h = null;   // (never from one rolling out or already parking)
     const queued = !out && (UNITS.some(o => o !== this && o.zoneOut === z && o.wantOut) ||
-      UNITS.some(o => o !== this && o.waitZone === z && o.waitSince < (this.waitZone === z ? this.waitSince : T)));
-    if ((h && !(out && h.state === 'returning' && h.way && h.way.len - h.way.s > 60)) || queued) { if (!out && this.waitZone !== z) { this.waitZone = z; this.waitSince = T; } return false; }
+      UNITS.some(o => o !== this && o !== ZONES[z] && o.zoneIn === z && o.homeRem < this.homeRem - 1 && o.homeRem > -10));
+    if ((h && !(out && h.state === 'returning' && h.way && h.way.len - h.way.s > 60)) || queued) { if (!out) this.waitZone = z; return false; }
     ZONES[z] = this; if (this.waitZone === z) this.waitZone = null; return true;
   }
   free() { for (const z in ZONES) if (ZONES[z] === this) ZONES[z] = null; }
@@ -139,6 +142,8 @@ class Unit {
     let best = Infinity; this.waitS = W.len;
     for (let i = 0; i < W.n; i++) { const d = Math.hypot(W.X[i] - wx, W.Z[i] - wz); if (d < best) { best = d; this.waitS = W.S[i]; } }
     if (this.home.kind === 'stall') this.waitS -= 28;
+    const bx = (W.boxes || (W.boxes = wayBoxes(W))).find(b => this.waitS + this.len / 2 > b.s0 - 1 && this.waitS - this.len / 2 < b.s1 + 1);
+    if (bx) this.waitS = bx.s0 - this.len / 2 - 1.5;   // (never waiting in a crossing: at its line instead)
   }
   /* a medic takes its patient to the ER (code 3 or not): in under the canopy, a while there, then home */
   transport(code3) {
@@ -205,23 +210,34 @@ class Unit {
     const w = this.way, p = w.at(w.s, _ua);
     let vt = p.v, wait = null, kind = null;
     if (!w.rev) {
-      const g = this.gapCap(), y = this.yieldCap(w);
-      vt = Math.min(vt, g, y, this.crossCap(w));
+      const g = this.gapCap(), y = this.yieldCap(w), x = this.crossCap(w);
+      vt = Math.min(vt, g, y, x);
       if (vt < 0.5) { wait = y <= g ? this.yieldTo : this.blocker; kind = wait && 'move'; }
+      this.held = x < 0.5 || (this.enterHeld && vt < 0.5);   // (at a red light, or waiting to get onto a street: its way ahead is not claimed — Civ.unitCap)
     }
     // on the way home: book the yard / the lot ~40 m before the waiting point; wait there while it is busy
     if (this.state === 'returning' && w === this.firstWay && ZONES[this.zoneIn] !== this && w.s > this.waitS - 40) {
       if (this.take(this.zoneIn)) { if (this.home.bay) this.home.bay.rear.want = 1; }
       else { const c = Math.sqrt(6 * Math.max(0, this.waitS - w.s)); if (c < vt) { vt = c; if (vt < 0.5) { wait = ZONES[this.zoneIn]; kind = 'zone'; } } }
     }
-    this.wait = wait; this.waitKind = kind;
+    this.wait = wait; this.waitKind = kind; if (kind === 'zone') this.held = true;
+    // code 3 past the traffic pulled over at the curb: out onto the centre line, back in well before the end
+    const rem = w.len - w.s, out = this.latOff < -0.3;
+    const straight = Math.abs(angleWrap(w.at(Math.min(w.len, w.s + 25), _ub).h - p.h)) < 0.2;   // (a turn within 25 m: slowly, and back in first if a car is coming the other way)
+    const pass = this.passing = this.lights && (this.state === 'responding' || this.state === 'transporting') && !w.rev && alongStreet(p.x, p.z, p.h) && !this.oncoming(straight ? 0 : 40) &&
+      ((rem > 40 && this.civAhead(60)) || (out && (rem > 25 ? this.civAhead(60) : this.civAhead(this.len / 2 + 3))));   // (once out, until it is by; near the end only while one is still alongside)
+    const ls = (this.v > 0.3 ? clamp(this.v * 0.4, 0.5, 2) : 0) * dt;   // (sideways only while rolling)
+    this.latOff = (this.latOff || 0) + clamp((pass ? -LANE_OFF : 0) - (this.latOff || 0), -ls, ls);
+    if (out && rem < 20) { const c = Math.max(1.5, Math.sqrt(6 * Math.max(0, rem - 10))); if (c < vt) vt = c; }   // (a crawl back in, not to the curb from the centre line)
+    if (out && !straight && vt > 4) vt = 4;   // (nor into a turn)
     // pulling away from the curb: let anyone driving by pass first
     if ((this.state === 'returning' || this.state === 'transporting') && w === this.firstWay && this.v < 0.5 && w.s < 3 && this.trafficBy()) vt = 0;
     const acc = this.spec.svc === 'pd' || this.type === 'chief' ? 3.2 : 2.0;
     this.v = this.v < vt ? Math.min(vt, this.v + acc * dt) : Math.max(vt, this.v - 5 * dt);
     if (this.v < 0.05 && vt < 0.05) this.blockT += dt; else this.blockT = 0;
     w.s = Math.min(w.len, w.s + this.v * dt);
-    w.at(w.s, _ua); this.place(_ua.x, _ua.z, _ua.h, w.rev, dt);
+    w.at(w.s, _ua); if (this.latOff) { _ua.x -= Math.sin(_ua.h) * this.latOff; _ua.z += Math.cos(_ua.h) * this.latOff; }
+    this.place(_ua.x, _ua.z, _ua.h, w.rev, dt);
     if (w.done) {
       const l = this.leg; this.next(); if (l && l.then) l.then();
       if (!this.way) this.arrive();
@@ -238,10 +254,25 @@ class Unit {
       this.state = 'quarters'; this.t = 0; this.call = null; this.place(this.home.x, this.home.z, this.home.h, false); this.free();
     }
   }
+  /* a civilian car ahead in its lane or at its curb (within `range` m, or still alongside) */
+  civAhead(range) {
+    const c = Math.cos(this.pos.h), s = Math.sin(this.pos.h), lo = this.latOff || 0;
+    return CIVS.some(o => { if (!o.on) return false; const dx = o.pos.x - this.pos.x, dz = o.pos.z - this.pos.z, along = dx * c + dz * s, lat = -dx * s + dz * c + lo;
+      return along > -(this.len + o.len) / 2 - 1 && along < range && lat > -1.5 && lat < 3.2; });
+  }
+  /* another unit coming the other way within 60 m (in the opposite lane, or on the centre line itself); with `cars`, a car
+     coming within that many metres too (one not pulled over) */
+  oncoming(cars) {
+    const c = Math.cos(this.pos.h), s = Math.sin(this.pos.h), lo = this.latOff || 0;
+    const near = (o, range) => { if (o === this || !o.model.group.visible || Math.abs(angleWrap(o.pos.h - this.pos.h)) < 2.4) return false;
+      const dx = o.pos.x - this.pos.x, dz = o.pos.z - this.pos.z, along = dx * c + dz * s, lat = -dx * s + dz * c + lo;
+      return along > -this.len && along < range && lat > -7 && lat < 1; };
+    return UNITS.some(o => o.way && near(o, 60)) || (cars > 0 && CIVS.some(o => o.on && !o.pulled && near(o, cars)));
+  }
   /* someone driving by close behind or alongside (either lane) */
   trafficBy() {
     const c = Math.cos(this.pos.h), s = Math.sin(this.pos.h);
-    return UNITS.some(o => {
+    return [...UNITS, ...CIVS].some(o => {
       if (o === this || !o.model.group.visible || o.v < 0.5) return false;
       const dx = o.pos.x - this.pos.x, dz = o.pos.z - this.pos.z, along = dx * c + dz * s;
       return along > -35 && along < 10 && Math.abs(-dx * s + dz * c) < 6;
@@ -265,8 +296,16 @@ class Unit {
       if (o === this || !o.model.group.visible || o.state === 'quarters' || (o.state === 'on_scene' && !o.way)) continue;
       if (this.blockT > 12 && o.blocker === this || this.leads(o)) continue;
       const dx = o.pos.x - this.pos.x, dz = o.pos.z - this.pos.z, along = dx * c + dz * s, lat = Math.abs(-dx * s + dz * c);
-      if (along <= 0 || along > 60 || lat > 2.4) continue;
+      if (along <= 0 || along > 60 || lat > 2.4 || Math.abs(angleWrap(o.pos.h - this.pos.h)) > 1.6) continue;   // (not one coming the other way in the next lane)
       const gap = along - (this.len + o.len) / 2 - 3, ov = o.moving ? o.v * Math.cos(o.pos.h - this.pos.h) : 0,
+        k = ov >= 0 ? Math.sqrt(7 * (Math.max(0, gap) + ov * ov / 10)) : Math.max(0, Math.sqrt(7 * Math.max(0, gap)) + ov);
+      if (k < cap) { cap = k; blocker = o; }
+    }
+    for (const o of CIVS) {   // civilian cars ahead in the lane (one pulled over at the curb, or passed on the centre line, is not)
+      if (!o.on) continue;
+      const dx = o.pos.x - this.pos.x, dz = o.pos.z - this.pos.z, along = dx * c + dz * s, lat = Math.abs(-dx * s + dz * c);
+      if (along <= 0 || along > 60 || lat > (this.wid + o.wid) / 2 + 0.05 || Math.abs(angleWrap(o.pos.h - this.pos.h)) > 1.2) continue;   // (one across its way: yieldCap)
+      const gap = along - (this.len + o.len) / 2 - 3, ov = o.v * Math.cos(o.pos.h - this.pos.h),
         k = ov >= 0 ? Math.sqrt(7 * (Math.max(0, gap) + ov * ov / 10)) : Math.max(0, Math.sqrt(7 * Math.max(0, gap)) + ov);
       if (k < cap) { cap = k; blocker = o; }
     }
@@ -296,6 +335,36 @@ class Unit {
         }
       }
     }
+    // civilian cars give way to it (Civ.unitCap); it only never drives into one standing on, or clearing, its path within
+    // its stopping distance (the path where it is going to be: on the centre line while it passes)
+    // coming out onto a street (from a bay, the lot, the ER, a curb): let a car about to pass where it gets on go by —
+    // waiting so, it claims no more than where it stands (`held`: the cars go by)
+    this.enterHeld = false;
+    if (!inStreet(this.pos.x, this.pos.z)) for (let k = 1; k <= 14 && w.s + k <= w.len; k++) {
+      const e = w.at(w.s + k, _ub); if (!inStreet(e.x, e.z)) continue;
+      for (const o of CIVS) {
+        if (!o.on) continue;
+        const dx = e.x - o.pos.x, dz = e.z - o.pos.z, d = Math.hypot(dx, dz);
+        if (o.v > 2 && d < 35 && d > 1 && dx * Math.cos(o.pos.h) + dz * Math.sin(o.pos.h) > d * 0.7 && d / o.v < 2.5) {
+          const c = Math.sqrt(7 * Math.max(0, k - this.len / 2 - 1)); if (c < cap) { cap = c; this.yieldTo = o; this.enterHeld = true; }
+        }
+      }
+      break;
+    }
+    const reach = Math.min(30, this.v * this.v / 6 + 10);
+    for (const o of CIVS) {
+      if (!o.on || Math.abs(o.pos.x - this.pos.x) + Math.abs(o.pos.z - this.pos.z) > 60) continue;
+      if ((o.pos.x - this.pos.x) * Math.cos(this.pos.h) + (o.pos.z - this.pos.z) * Math.sin(this.pos.h) < 0) continue;   // (behind it)
+      const R = (this.wid + o.wid) / 2 + 0.05, c = Math.cos(o.pos.h), s = Math.sin(o.pos.h), e = o.len / 2 - o.wid / 2;
+      for (let k = 1; k <= reach && w.s + k <= w.len; k += 1) {
+        const p = w.at(w.s + k, _ub), lo = k > 8 && this.passing ? -LANE_OFF : (this.latOff || 0);
+        if (lo) { p.x -= Math.sin(p.h) * lo; p.z += Math.cos(p.h) * lo; }
+        if (Math.hypot(p.x - o.pos.x - c * e, p.z - o.pos.z - s * e) < R || Math.hypot(p.x - o.pos.x, p.z - o.pos.z) < R || Math.hypot(p.x - o.pos.x + c * e, p.z - o.pos.z + s * e) < R) {
+          const cc = Math.sqrt(7 * Math.max(0, k - this.len / 2 - 0.5)); if (cc < cap) { cap = cc; this.yieldTo = o; }
+          break;
+        }
+      }
+    }
     return cap;
   }
   /* crossings ahead: code 3 slows to clear a red light or a stop; code 1 stops at the line on red (or yellow, when it
@@ -308,6 +377,15 @@ class Unit {
       const p = w.at(w.s + k, _ub), x = Math.round(p.x / 50) * 50, z = Math.round(p.z / 50) * 50;
       if (Math.abs(p.x - x) > EDGE || Math.abs(p.z - z) > EDGE || !CITY_LAYOUT.avenues.some(a => a.x === x) || !CITY_LAYOUT.streets.some(s => s.z === z)) continue;
       const stop = k - this.len / 2 - 1;                 // the front 1 m short of the box: behind the stop line
+      // another unit in the box on a move across this one (and not giving way to it), or a car in it (or that can no longer
+      // stop short of it): wait at the line — or where it stands, its nose over it but itself not in yet
+      const key = x + ',' + z, my = stop > -this.len / 2 && (w.boxes || (w.boxes = wayBoxes(w))).find(b => b.key === key && w.s - this.len / 2 < b.s1);
+      if (my) for (const o of UNITS) {
+        if (o === this || !o.way || o.way.rev || !o.model.group.visible || o.yieldTo === this || Math.abs(o.pos.x - x) > EDGE || Math.abs(o.pos.z - z) > EDGE) continue;
+        const ob = (o.way.boxes || (o.way.boxes = wayBoxes(o.way))).find(b => b.key === key && o.way.s - o.len / 2 < b.s1);
+        if (ob && boxConflict(ob, my)) { this.yieldTo = this.yieldTo || o; return Math.sqrt(2 * 3 * Math.max(0, stop)); }
+      }
+      if (my) for (const o of CIV_BOXES.get(key) || []) if (o.boxIn && o.way.s + o.len / 2 > o.boxIn.s0 - o.v * o.v / 10 - 1 && boxConflict(o.boxIn, my)) { this.yieldTo = this.yieldTo || o; return Math.sqrt(2 * 3 * Math.max(0, stop)); }   // (a car in it or past stopping, too)
       if (stop < -1.5) return Infinity;                  // already over the line: clear out
       const sig = CITY_LAYOUT.signals.some(s => s[0] === x && s[1] === z), axis = Math.abs(Math.cos(p.h)) > Math.abs(Math.sin(p.h)) ? 'ew' : 'ns';
       const light = sig ? CITY.signal(axis) : 'g', red = sig && (light === 'r' || (light === 'y' && this.v * this.v / 9 < stop));

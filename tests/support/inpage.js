@@ -36,7 +36,7 @@
   /* ---- invariants checked after every step ---- */
   // per-state limits for the stuck detector (s); EXEMPT states are held by the dispatcher (drills / calls)
   H.yaws = new Map();
-  H.STATE_LIMITS = { turnout: 90, pullout: 30, responding: 300, returning: 400, parking: 60, transporting: 400, at_hospital: 120 };
+  H.STATE_LIMITS = { turnout: 90, pullout: 30, responding: 300, returning: 400, parking: 60, transporting: 400, at_hospital: 120, civStill: 100 };   // (a car: two red lights and a unit going by)
   H.EXEMPT = new Set(['quarters', 'on_scene', 'away']);
   H.checkInvariants = () => {
     const v = [], who = u => `${u.cs}[${u.state}]`;
@@ -67,6 +67,14 @@
       if (h.state === 'quarters' && h.pos.distanceTo(h.pad) > 0.05) v.push(`on the pad away from it ${who(h)}`);
       if ((h.ph === 'fly' || h.ph === 'hover') && h.rpm < 0.95) v.push(`${who(h)} flying with the rotor at ${h.rpm.toFixed(2)}`);
     }
+    // civilian cars: no NaN, never in a unit or in each other
+    const civs = CIVS.filter(c => c.on), cw = c => `car ${c.i}`;
+    for (const c of civs) if (!Number.isFinite(c.pos.x + c.pos.z + c.v + c.lat)) v.push(`NaN ${cw(c)}`);
+    for (let i = 0; i < civs.length; i++) {
+      const a = civs[i];
+      for (let j = i + 1; j < civs.length; j++) { const b = civs[j]; if (Math.hypot(a.pos.x - b.pos.x, a.pos.z - b.pos.z) < (a.wid + b.wid) / 2) v.push(`${cw(a)} and ${cw(b)} overlap`); }
+      for (const u of UNITS) if (u.model.group.visible && Math.hypot(a.pos.x - u.pos.x, a.pos.z - u.pos.z) < (a.wid + u.wid) / 2) v.push(`${cw(a)} and ${who(u)} overlap`);
+    }
     if (!Number.isFinite(T) || !Number.isFinite(LOAD.level)) v.push('NaN in the clock or the load');
     if (LOAD.level < 0 || LOAD.level > 1) v.push(`LOAD out of range ${LOAD.level}`);
     for (const b of CITY.bays) if (!(b.door.k >= 0 && b.door.k <= 1)) v.push(`bay ${b.i} door at ${b.door.k}`);
@@ -85,6 +93,7 @@
       const d = T - k.t0, m = H.maxT[u.state];
       if (!m || d > m.t) H.maxT[u.state] = { t: d, who: u.cs };
     }
+    for (const c of CIVS) if (c.on && c.stillT > (H.maxT.civStill ? H.maxT.civStill.t : 0)) H.maxT.civStill = { t: c.stillT, who: `car ${c.i}` };
   };
   H.stuck = () => Object.entries(H.maxT).filter(([st, m]) => !H.EXEMPT.has(st) && m.t > (H.STATE_LIMITS[st] || 600)).map(([st, m]) => `${m.who} spent ${m.t.toFixed(0)} s in ${st}`);
   H.sim = (sec, o = {}) => {

@@ -11,6 +11,7 @@ test('a house fire grows until water is on it, the ladder goes up and is bedded 
   expect(await wp.run(() => FX.fire.live.length)).toBeGreaterThan(5);
   const up = await wp.until(() => UNITS.find(u => u.type === 'ladder').aerialK > 0.98, 200);
   expect(up.done, 'the aerial is raised').toBe(true);
+  await wp.sim(3);   // (its stream on the roof)
   expect(await wp.run(() => FX.water.live.length)).toBeGreaterThan(5);
   const out = await wp.until(() => DISPATCH.calls[0].scene.out, 300);
   expect(out.done, 'knocked down').toBe(true);
