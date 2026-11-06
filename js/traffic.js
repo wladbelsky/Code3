@@ -145,7 +145,7 @@ class Civ {
     for (const u of MOVERS) {
       const uw = u.way; if (!uw || uw.rev || !u.model.group.visible) continue;
       const ub = (uw.boxes || (uw.boxes = wayBoxes(uw))).find(x => x.key === b.key && uw.s - u.len / 2 < x.s1), to = ub && ub.s0 - uw.s - u.len / 2;
-      const go = !u.held && (!ub || !ub.sig || u.lights || CITY.signal(ub.axis) === 'g'), waits = u.yieldTo === this && this.yieldTo !== u;   // (code 1 coming up to a red: it will stop; one held for its zone stays put)
+      const go = !(u.held && u.waitKind === 'zone') && (!ub || !ub.sig || u.lights || CITY.signal(ub.axis) === 'g'), waits = u.yieldTo === this && this.yieldTo !== u;   // (code 1 coming up to a red: it will stop; one held for its zone stays put — not one held for this very box: it goes once it is clear)
       if (ub && (to < 0 || (go && !waits && (to < 3 || (u.v > 1.5 && to / u.v < 3.5)))) && boxConflict(ub, b)) return stopCap;   // (one in the box: always)
     }
     set.add(this); this.boxIn = b; this.stopAt = null;
@@ -156,7 +156,7 @@ class Civ {
      already; on that path or past stopping, it clears it (the unit holds back: Unit.yieldCap). Merging into one lane,
      the one nearer the merge goes first. */
   unitCap() {
-    let cap = Infinity; const w = this.way, hj = clamp(this.v * 3, 12, 40), prev = this.yieldTo; this.yieldTo = null;
+    let cap = Infinity; const w = this.way, hj = clamp(this.v * 3, 12, 40), prev = this.yieldTo, inBox = !!this.boxIn && w.s + this.len / 2 > this.boxIn.s0; this.yieldTo = null;
     for (const u of MOVERS) {
       const uw = u.way; if (!uw || uw.rev || !u.model.group.visible || Math.abs(u.pos.x - this.pos.x) + Math.abs(u.pos.z - this.pos.z) > 110) continue;
       const dh = Math.abs(angleWrap(u.pos.h - this.pos.h)), along = (u.pos.x - this.pos.x) * Math.cos(this.pos.h) + (u.pos.z - this.pos.z) * Math.sin(this.pos.h);
@@ -167,11 +167,11 @@ class Civ {
       for (let k = 1.5; k <= hk && uw.s + k <= uw.len; k += 1.5) { const q = uw.at(uw.s + k, _tob), lo = u.latOff || 0; P.push(q.x - Math.sin(q.h) * lo, q.z + Math.cos(q.h) * lo, k, q.h); }
       for (let j = 0; j <= hj && w.s + j <= w.len; j += 1.5) {
         const q = j ? w.at(w.s + j, _tob) : this.pos; let hit = -1;
-        for (let i = 0; i < P.length; i += 4) if (Math.hypot(q.x - P[i], q.z - P[i + 1]) < (Math.abs(angleWrap(P[i + 3] - q.h)) > 2.6 || (P[i + 2] < 0 && this.squeeze) ? R - 0.75 : R)) { hit = i; break; }   // (head-on in the next lane: they pass; squeezing by a unit's nose: no margin)
+        for (let i = 0; i < P.length; i += 4) if (Math.hypot(q.x - P[i], q.z - P[i + 1]) < (P[i + 2] < 0 && this.squeeze ? R - 0.75 : Math.abs(angleWrap(P[i + 3] - q.h)) > 2.6 ? R - 0.55 : R)) { hit = i; break; }   // (head-on in the next lane: they pass; squeezing by a unit's nose: no margin)
         if (hit < 0) continue;
         if (P[hit + 2] >= 0 && Math.abs(angleWrap(P[hit + 3] - q.h)) < 0.6 && j < P[hit + 2]) break;   // (a merge it is ahead in: the unit follows)
         const d = j - this.len / 2 - 2;   // (the unit's body itself, where it is: always stop short — never drive into it)
-        if (P[hit + 2] < 0 || (j > this.len / 2 + 1 && (prev === u || d > this.v * this.v / 10 + 0.3))) { const c = Math.sqrt(7 * Math.max(0, d)); if (c < cap) { cap = c; this.yieldTo = u; } }
+        if (P[hit + 2] < 0 || (!(inBox && w.s + j < this.boxIn.s1 + this.len / 2) && j > this.len / 2 + 1 && (prev === u || d > this.v * this.v / 10 + 0.3))) { const c = Math.sqrt(7 * Math.max(0, d)); if (c < cap) { cap = c; this.yieldTo = u; } }   // (in a box it is committed to: it clears it — only the unit's body stops it)
         break;
       }
     }

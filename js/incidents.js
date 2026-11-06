@@ -106,8 +106,10 @@ function pickSite(kind, busy) {
 function siteSlots(s) {
   if (s.slots) return s.slots;
   const cross = s.ax === 'ew' ? CITY_LAYOUT.avenues.map(v => v.x) : CITY_LAYOUT.streets.map(v => v.z), out = [];
-  for (const side of [s.side, -s.side]) for (const k of [0, 1, -1, 2, -2, 3, -3, 4, -4]) {
-    const a = s.a + k * 15; if (!cross.some(c => Math.abs(c - a) < 16) && Math.abs(a) < CITY_LAYOUT.inner - 8) out.push({ a, side });
+  for (const side of [s.side, -s.side]) for (const k of [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6, 7, -7, 8, -8]) {   // (enough that a call's units never share one: the wide entrances take some out)
+    const a = s.a + k * 15, off = s.at + side * (ROAD_W / 2 + 0.5), [x, z] = s.ax === 'ew' ? [a, off] : [off, a];
+    const gate = CITY.drives.some(r => (s.ax === 'ew' ? r[2] - r[0] : r[3] - r[1]) > 6 && x > r[0] - (s.ax === 'ew' ? 7 : 4) && x < r[2] + (s.ax === 'ew' ? 7 : 4) && z > r[1] - (s.ax === 'ew' ? 4 : 7) && z < r[3] + (s.ax === 'ew' ? 4 : 7));   // (not across a wide entrance: the ER, the apron, the lot gate, the gas station)
+    if (!gate && !cross.some(c => Math.abs(c - a) < 16) && Math.abs(a) < CITY_LAYOUT.inner - 8) out.push({ a, side });   // (16 m: clear of a crash's wrecks too)
   }
   return s.slots = out;
 }

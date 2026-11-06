@@ -34,6 +34,14 @@ const DISPATCH = {
     this.assign(c);
     return c;
   },
+  /* the first curb place of the site that none of the call's other units holds (they come and go: a count would repeat one) */
+  freeSlot(c, u) {
+    if (c.site.kind === 'far') return 0;
+    const taken = new Set(c.units.filter(x => x !== u && !x.air && x.callRef === c && x.call && x.call.curb).map(x => x.call.curb.join()));
+    const n = siteSlots(c.site).length; let k = 0;
+    while (k < n - 1 && taken.has(siteDest(c.site, k).curb.join())) k++;
+    return k;
+  },
   /* free units for what the call still needs: the tone-out (or a patrol's own stop) and the acknowledgements */
   assign(c) {
     const have = c.units.map(u => u.type), got = [];
@@ -41,7 +49,7 @@ const DISPATCH = {
       const i = have.indexOf(t); if (i >= 0) { have.splice(i, 1); continue; }
       const u = this.free(t)[0]; if (!u) continue;
       u.callRef = c; c.units.push(u); got.push(u);
-      u.dispatch(u.air ? c.site : siteDest(c.site, c.units.filter(x => !x.air).length - 1));   // (a helicopter: the site itself)
+      u.dispatch(u.air ? c.site : siteDest(c.site, this.freeSlot(c, u)));   // (a helicopter: the site itself)
       RADIO.say('CAD', `${u.short}  DISP  #${c.id}`, 'sys');
     }
     if (got.length) {

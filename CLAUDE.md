@@ -139,7 +139,7 @@ fictional (default FAIRHAVEN).
   `UPDATE_LINES` while working; after `dwell` the units are released one by one (the chief last); closed once all cleared.
   Police units on a fire / EMS call use the `pd` pools.
 - **Sites**: curbs (`site(kind, ax, at, a, side, name)`); `siteSlots` = curb places 15 m apart on the site's side, then
-  across the street, none within 16 m of a crossing; units pull over 8 m after leaving the lane. Far (mutual aid): a
+  across the street (±8 × 15 m), none within 16 m of a crossing (a crash's wrecks are 11 / 17 m from it) or across a wide entrance (a `drive` wider than 6 m: the ER, the apron, the lot gate, the gas station); each unit takes the first place none of the call's others holds (`freeSlot`); units pull over 8 m after leaving the lane. Far (mutual aid): a
   street's end, the same for all of the call's units.
 - **Radio** (`RADIO.say(who, text, kind, prio)`): 'sys' CAD lines go straight to the log, the rest are queued one at a
   time (gap ~1.6 s + length), stale ones (> 45 s, prio 0) dropped. Every line through `radioLine` (tiers: routine /
@@ -191,6 +191,11 @@ fictional (default FAIRHAVEN).
   off the centre line or slower than 6 m/s (it cuts in just ahead, slowing for a turn). The unit stays out on a straight
   while a car is alongside or within its stopping distance (`abreast`), whatever comes the other way in its own lane;
   two out head-on: the one later in the roster goes back in. It starts out only with no unit coming within 60 m + 3 s.
+- **In a box it is committed to**, a car clears it: inside the box only a unit's body stops it, not the unit's way (beyond the box it gives way as ever; stopping
+  mid-box for a unit still coming leaves it standing in the way of that unit).
+- **Oncoming**: a unit about to turn into the street toward the passer counts (its way 15 / 30 m on); other units'
+  ways are taken where they really drive (out on the centre line while passing: `yieldCap`). A unit waits for a car in
+  its box until half its length is in (braking for it from code 3), for another unit only while its nose is barely in.
 - **Queues and boxes**: a car standing in a queue short of a box (whoever is ahead stands too) has no claim on it
   (`queued`: one it cannot use holds up the cross traffic, maybe what the one ahead waits for); a unit `held` for its zone
   or a red does not hold a box it is not in. A car jammed with a unit and no room to back (a unit close behind, or 8 m

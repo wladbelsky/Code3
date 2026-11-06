@@ -29,7 +29,7 @@ const HOSP = { inX: 72, outX: 96, z: 31, slots: [{ x: 88, unit: null }, { x: 80,
 const MAIN_Z = 50;
 let UNITS = [], MOVERS = [];   // MOVERS: the units and the visitors — everyone on the road with lights (traffic rules, giving way)
 const ZONES = { apron: null, yard: null, lot: null };
-const _ua = { x: 0, z: 0, h: 0, v: 0 }, _ub = { x: 0, z: 0, h: 0, v: 0 };
+const _ua = { x: 0, z: 0, h: 0, v: 0 }, _ub = { x: 0, z: 0, h: 0, v: 0 }, _uc = { x: 0, z: 0, h: 0, v: 0 };
 const YIELD_PTS = [], _av = new V3();
 const avenueX = () => CITY_LAYOUT.avenues.find(a => a.x > 0 && a.x < 100).x;   // 2nd Ave: the police lot's gate
 
@@ -270,7 +270,13 @@ class Unit {
     const near = (o, range) => { if (o === this || !o.model.group.visible || Math.abs(angleWrap(o.pos.h - this.pos.h)) < 2.4 || (centre && !(o.latOff < -0.3 && o.i < this.i))) return false;
       const dx = o.pos.x - this.pos.x, dz = o.pos.z - this.pos.z, along = dx * c + dz * s, lat = -dx * s + dz * c + lo;
       return along > -this.len && along < range && lat > -7 && lat < 1; };
-    return MOVERS.some(o => o.way && near(o, 60 + (o.v + this.v) * 3)) || (cars > 0 && CIVS.some(o => o.on && !o.pulled && near(o, cars)));
+    // (a unit about to turn into this street toward it counts too: where its way is ~15 / 30 m on)
+    const turning = o => { if (centre || !o.way || o.way.rev) return false;
+      for (const k of [15, 30]) { if (o.way.s + k > o.way.len) break; const q = o.way.at(o.way.s + k, _uc);
+        if (Math.abs(angleWrap(q.h - this.pos.h)) < 2.4) continue; const dx = q.x - this.pos.x, dz = q.z - this.pos.z, along = dx * c + dz * s, lat = -dx * s + dz * c + lo;
+        if (along > -this.len && along < 60 + (o.v + this.v) * 3 && lat > -7 && lat < 1) return true; }
+      return false; };
+    return MOVERS.some(o => o.way && o !== this && o.model.group.visible && (near(o, 60 + (o.v + this.v) * 3) || turning(o))) || (cars > 0 && CIVS.some(o => o.on && !o.pulled && near(o, cars)));
   }
   /* someone driving by close behind or alongside (either lane) */
   trafficBy() {
@@ -326,7 +332,8 @@ class Unit {
       const R = (this.wid + o.wid) / 2 + 0.6, ow = o.way, pts = YIELD_PTS; pts.length = 0;
       pts.push(o.pos.x, o.pos.z, 0);
       const hj = clamp(o.v * 3, 12, 45), hk = clamp(this.v * 3, 26, 45);   // ~3 s ahead for both
-      if (ow) for (let j = 2; j <= hj && ow.s + j <= ow.len; j += 2) { const q = ow.at(ow.s + j, _ub); pts.push(q.x, q.z, j); }
+      const olo = o.passing ? -LANE_OFF : (o.latOff || 0);   // (where it really drives: out on the centre line while passing)
+      if (ow) for (let j = 2; j <= hj && ow.s + j <= ow.len; j += 2) { const q = ow.at(ow.s + j, _ub); pts.push(q.x - Math.sin(q.h) * olo, q.z + Math.cos(q.h) * olo, j); }
       for (let k = 2; k <= hk && w.s + k <= w.len; k += 1.5) {
         const p = w.at(w.s + k, _ub);
         for (let i = 0; i < pts.length; i += 3) {
@@ -382,14 +389,14 @@ class Unit {
       const stop = k - this.len / 2 - 1;                 // the front 1 m short of the box: behind the stop line
       // another unit in the box on a move across this one (and not giving way to it), or a car in it (or that can no longer
       // stop short of it): wait at the line — or where it stands, its nose over it but itself not in yet
-      const key = x + ',' + z, my = stop > -this.len / 2 && (w.boxes || (w.boxes = wayBoxes(w))).find(b => b.key === key && w.s - this.len / 2 < b.s1);
-      if (my) for (const o of MOVERS) {
+      const key = x + ',' + z, my = stop > -this.len && (w.boxes || (w.boxes = wayBoxes(w))).find(b => b.key === key && w.s - this.len / 2 < b.s1);
+      if (my && stop > -this.len / 2) for (const o of MOVERS) {   // (another unit: only while its nose is barely over the line — a car in the box: half its length in, braking for it from code 3)
         if (o === this || !o.way || o.way.rev || !o.model.group.visible || o.yieldTo === this || Math.abs(o.pos.x - x) > EDGE || Math.abs(o.pos.z - z) > EDGE) continue;
         const ob = (o.way.boxes || (o.way.boxes = wayBoxes(o.way))).find(b => b.key === key && o.way.s - o.len / 2 < b.s1);
         if (ob && boxConflict(ob, my)) { this.yieldTo = this.yieldTo || o; return Math.sqrt(2 * 3 * Math.max(0, stop)); }
       }
       if (my) for (const o of CIV_BOXES.get(key) || []) if (o.boxIn && o.way.s + o.len / 2 > o.boxIn.s0 - o.v * o.v / 10 - 1 && boxConflict(o.boxIn, my)) { this.yieldTo = this.yieldTo || o; return Math.sqrt(2 * 3 * Math.max(0, stop)); }   // (a car in it or past stopping, too)
-      if (stop < -1.5) return Infinity;                  // already over the line: clear out
+      if (stop < -1.5) return Infinity;                  // already over the line: clear out (a car in the box it waits for even half a length in: braking for it from code 3 it may be)
       const sig = CITY_LAYOUT.signals.some(s => s[0] === x && s[1] === z), axis = Math.abs(Math.cos(p.h)) > Math.abs(Math.sin(p.h)) ? 'ew' : 'ns';
       const light = sig ? CITY.signal(axis) : 'g', red = sig && (light === 'r' || (light === 'y' && this.v * this.v / 9 < stop));
       const vIn = code3 ? (red ? 6 : !sig ? 8 : Infinity) : (red ? 0 : sig ? Infinity : 2.2), dec = code3 ? 4 : 3;   // (code 3: slowly through a red, a little quicker through a stop)
