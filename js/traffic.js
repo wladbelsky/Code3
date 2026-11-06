@@ -12,7 +12,7 @@
      something stands at the curb: then it just slows) until the unit is by; the unit passes on the centre line;
    - obstacles at the curb (units on scene, wrecks): it eases left round them, slowly.
    Nothing is built per spawn: the Way is plain arrays; the model is the car's own for good.                      */
-const CIV_MAX = 14, CIV_V = [10, 12.5];
+const CIV_MAX = 24, CIV_V = [10, 12.5];
 let CIVS = [];
 const CIV_BOXES = new Map(), UNIT_PTS = [];   // crossing key → Set of the cars committed to its box
 const _tw = { x: 0, z: 0, h: 0, v: 0 }, _tob = { x: 0, z: 0, h: 0, v: 0 };
@@ -54,17 +54,10 @@ class Civ {
   get state() { return this.on ? 'driving' : 'parked'; }
   /* a start off the screen on a street, heading into town, and an end off the screen on another */
   spawn() {
-    const L = CITY_LAYOUT, end = () => {
-      const ew = Math.random() < 0.5, at = ew ? pick(L.streets).z : pick(L.avenues).x, sg = Math.random() < 0.5 ? -1 : 1;
-      let a = 175; for (; a < L.ext - 40; a += 25) { const p = ew ? _tvp.set(sg * a, 0, at) : _tvp.set(at, 0, sg * a); if (!VIEW.onScreen(p, 0.12)) break; }
-      return { ax: ew ? 'ew' : 'ns', at, a: sg * a, sg };
-    };
-    const s = end(), e = end(); if (s.ax === e.ax && s.at === e.at) return false;
-    const inDir = s.ax === 'ew' ? (s.sg > 0 ? 'W' : 'E') : (s.sg > 0 ? 'N' : 'S'), outDir = e.ax === 'ew' ? (e.sg > 0 ? 'E' : 'W') : (e.sg > 0 ? 'S' : 'N');
-    const w = ROADS.way({ ax: s.ax, at: s.at, a: s.a, dirs: [inDir] }, { ax: e.ax, at: e.at, a: e.a, dir: outDir }, null, null, { vmax: rand(...CIV_V), alat: 2.2, vEnd: 8 });
+    const w = throughWay({ vmax: rand(...CIV_V), alat: 2.2, vEnd: 8 });
     if (!w) return false;
     const p = w.at(0, _tw);
-    if ([...UNITS, ...CIVS].some(o => o !== this && o.model.group.visible && Math.hypot(o.pos.x - p.x, o.pos.z - p.z) < 30)) return false;
+    if ([...MOVERS, ...CIVS].some(o => o !== this && o.model.group.visible && Math.hypot(o.pos.x - p.x, o.pos.z - p.z) < 30)) return false;
     this.start(w); return true;
   }
   start(w) {
@@ -77,10 +70,11 @@ class Civ {
   leaveBox() { if (this.boxIn) { const s = CIV_BOXES.get(this.boxIn.key); if (s) s.delete(this); this.boxIn = null; } }
   /* the code-3 unit coming up on it, if any (lights on, moving, within 70 m behind / toward it, near its line, going on past) */
   siren() {
-    for (const u of UNITS) {
+    for (const u of MOVERS) {
       if (!u.lights || !u.model.group.visible || u.v < 2 || (u.state !== 'responding' && u.state !== 'transporting')) continue;
       const dx = this.pos.x - u.pos.x, dz = this.pos.z - u.pos.z, c = Math.cos(u.pos.h), s = Math.sin(u.pos.h), along = dx * c + dz * s;
-      if (along > -(u.len + this.len) / 2 - 3 && along < 70 && Math.abs(-dx * s + dz * c) < 30 && (!u.way || u.way.len - u.way.s > along + 30)) return u;   // (till its tail is by; not one stopping right here: drive on out of its way)
+      const by = u.latOff < -0.3 || u.v < 6 ? 10 : 3;   // (till its tail is by — well by while it is still coming back in off the centre line or slowing just ahead)
+      if (along > -(u.len + this.len) / 2 - by && along < 70 && Math.abs(-dx * s + dz * c) < 30 && (!u.way || u.way.len - u.way.s > along + 30)) return u;   // (not one stopping right here: drive on out of its way)
     }
     return null;
   }
@@ -106,14 +100,14 @@ class Civ {
   /* who is close behind it in its lane (within `gap` m bumper to bumper), if anyone */
   behindBy(gap) {
     const c = Math.cos(this.pos.h), s = Math.sin(this.pos.h);
-    return [...UNITS, ...CIVS].find(o => { if (o === this || !o.model.group.visible) return false; const dx = o.pos.x - this.pos.x, dz = o.pos.z - this.pos.z, along = dx * c + dz * s;
+    return [...MOVERS, ...CIVS].find(o => { if (o === this || !o.model.group.visible) return false; const dx = o.pos.x - this.pos.x, dz = o.pos.z - this.pos.z, along = dx * c + dz * s;
       return along < 0 && along > -(this.len + o.len) / 2 - gap && Math.abs(-dx * s + dz * c) < (this.wid + o.wid) / 2 + 0.3; }) || null;
   }
   /* the vehicle ahead in its lane (units and cars), as Unit.gapCap */
   gapCap() {
     const c = Math.cos(this.pos.h), s = Math.sin(this.pos.h); let cap = Infinity; this.blocker = null;
-    for (const L of [UNITS, CIVS]) for (const o of L) {
-      if (o === this || !o.model.group.visible || (L === UNITS && (o.state === 'quarters' || (o.state === 'on_scene' && !o.way)))) continue;
+    for (const L of [MOVERS, CIVS]) for (const o of L) {
+      if (o === this || !o.model.group.visible || (L === MOVERS && (o.state === 'quarters' || (o.state === 'on_scene' && !o.way)))) continue;
       const dx = o.pos.x - this.pos.x, dz = o.pos.z - this.pos.z, along = dx * c + dz * s, lat = Math.abs(-dx * s + dz * c);
       const dh = Math.abs(angleWrap(o.pos.h - this.pos.h));   // (one pulling out into the lane at an angle counts as in it)
       if (along <= 0 || along > 50 || lat > (this.wid + o.wid) / 2 + 0.1 + (dh > 0.15 && o.v > 0.3 ? 1.5 : 0) || dh > 1.6) continue;   // (not oncoming: crossing paths are the boxes' and the units' business)
@@ -129,13 +123,16 @@ class Civ {
     const b = w.boxes[this.bi]; if (!b) return Infinity;
     const line = b.s0 - this.len / 2 - 1, d = line - w.s, inside = w.s + this.len / 2 > b.s0;
     if (inside && this.boxIn !== b && this.intruded !== b) { this.intruded = b; TRAFFIC.intruded++; }   // (in without being let in: the tests count it)
+    // standing in a queue short of the box (whoever is ahead stands too): no claim on it — a claim it cannot use holds up the
+    // cross traffic, and that may be what the one ahead waits for
+    const queued = !inside && this.v < 0.5 && !!this.blocker && this.blocker.v < 0.5;
     if (this.boxIn === b) {   // committed: on through, unless it can still stop short and must after all
-      if (inside || !(held || (b.sig && CITY.signal(b.axis) !== 'g')) || this.v * this.v / 8 > d) return Infinity;
+      if (inside || !(held || queued || (b.sig && CITY.signal(b.axis) !== 'g')) || this.v * this.v / 8 > d) return Infinity;
       this.leaveBox();
     }
     if (d > 40) return Infinity;
     const stopCap = Math.sqrt(2 * 3 * Math.max(0, d));
-    if (held) return stopCap;
+    if (held || queued) return stopCap;
     if (b.sig) { if (this.red(b, d)) return stopCap; }
     else {   // an all-way stop: a full stop at the line first, then in turn
       if (this.stopAt !== b) { if (d < 1.2 && this.v < 0.2) { this.stopAt = b; this.stopT = T; } return stopCap; }
@@ -145,10 +142,10 @@ class Civ {
     for (const o of set) if (boxConflict(o.boxIn, b)) return stopCap;
     // a unit in the box, at its line (free to go) or due in it within ~3.5 s, on a move across this one — one in the box
     // always, the others unless giving way to this car (Unit.yieldCap decided it this step); one queued further back waits its turn
-    for (const u of UNITS) {
+    for (const u of MOVERS) {
       const uw = u.way; if (!uw || uw.rev || !u.model.group.visible) continue;
       const ub = (uw.boxes || (uw.boxes = wayBoxes(uw))).find(x => x.key === b.key && uw.s - u.len / 2 < x.s1), to = ub && ub.s0 - uw.s - u.len / 2;
-      const go = !ub || !ub.sig || u.lights || CITY.signal(ub.axis) === 'g', waits = u.yieldTo === this && this.yieldTo !== u;   // (code 1 coming up to a red: it will stop)
+      const go = !u.held && (!ub || !ub.sig || u.lights || CITY.signal(ub.axis) === 'g'), waits = u.yieldTo === this && this.yieldTo !== u;   // (code 1 coming up to a red: it will stop; one held for its zone stays put)
       if (ub && (to < 0 || (go && !waits && (to < 3 || (u.v > 1.5 && to / u.v < 3.5)))) && boxConflict(ub, b)) return stopCap;   // (one in the box: always)
     }
     set.add(this); this.boxIn = b; this.stopAt = null;
@@ -160,7 +157,7 @@ class Civ {
      the one nearer the merge goes first. */
   unitCap() {
     let cap = Infinity; const w = this.way, hj = clamp(this.v * 3, 12, 40), prev = this.yieldTo; this.yieldTo = null;
-    for (const u of UNITS) {
+    for (const u of MOVERS) {
       const uw = u.way; if (!uw || uw.rev || !u.model.group.visible || Math.abs(u.pos.x - this.pos.x) + Math.abs(u.pos.z - this.pos.z) > 110) continue;
       const dh = Math.abs(angleWrap(u.pos.h - this.pos.h)), along = (u.pos.x - this.pos.x) * Math.cos(this.pos.h) + (u.pos.z - this.pos.z) * Math.sin(this.pos.h);
       if ((dh < 0.5 && along > 0) || (dh < 1.2 && along < 0)) continue;   // (one ahead going its way: followed; one behind: it follows)
@@ -170,7 +167,7 @@ class Civ {
       for (let k = 1.5; k <= hk && uw.s + k <= uw.len; k += 1.5) { const q = uw.at(uw.s + k, _tob), lo = u.latOff || 0; P.push(q.x - Math.sin(q.h) * lo, q.z + Math.cos(q.h) * lo, k, q.h); }
       for (let j = 0; j <= hj && w.s + j <= w.len; j += 1.5) {
         const q = j ? w.at(w.s + j, _tob) : this.pos; let hit = -1;
-        for (let i = 0; i < P.length; i += 4) if (Math.hypot(q.x - P[i], q.z - P[i + 1]) < (Math.abs(angleWrap(P[i + 3] - q.h)) > 2.6 ? R - 0.55 : R)) { hit = i; break; }   // (head-on in the next lane: they pass)
+        for (let i = 0; i < P.length; i += 4) if (Math.hypot(q.x - P[i], q.z - P[i + 1]) < (Math.abs(angleWrap(P[i + 3] - q.h)) > 2.6 || (P[i + 2] < 0 && this.squeeze) ? R - 0.75 : R)) { hit = i; break; }   // (head-on in the next lane: they pass; squeezing by a unit's nose: no margin)
         if (hit < 0) continue;
         if (P[hit + 2] >= 0 && Math.abs(angleWrap(P[hit + 3] - q.h)) < 0.6 && j < P[hit + 2]) break;   // (a merge it is ahead in: the unit follows)
         const d = j - this.len / 2 - 2;   // (the unit's body itself, where it is: always stop short — never drive into it)
@@ -197,10 +194,14 @@ class Civ {
     this.lat += clamp(latT - this.lat, -1.2 * dt, 1.2 * dt);
     this.stillT = this.v < 0.1 ? this.stillT + dt : 0;
     // nose to nose with a unit that waits for it (it turned across in front of the car): back off (up to 8 m) to let it by
-    this.jamT = this.yieldTo && this.yieldTo.yieldTo === this && this.v < 0.2 ? (this.jamT || 0) + dt : 0;
+    const jw = this.yieldTo || (this.blocker && this.blocker.spec ? this.blocker : null);   // (or a unit it follows that waits for it: one cutting in to its curb across the lane)
+    this.jamT = jw && jw.yieldTo === this && this.v < 0.2 ? (this.jamT || 0) + dt : 0;
     if (this.v > 1) this.backed = 0;
     const back = (this.jamT > 1.5 || T - (this.pushed || -9) < 0.2) && (this.backed || 0) < 8, b = back && this.behindBy(1.5);   // (the car behind backs off too)
     if (b && b.pushed !== undefined) b.pushed = T;
+    // jammed with no room to back (a unit close behind, or 8 m backed already): squeeze by the unit's nose, no margin
+    if (this.jamT > 3 && (!back || (!!b && b.pushed === undefined))) this.squeezeT = T;
+    this.squeeze = T - (this.squeezeT || -99) < 6;   // (for a while: moving clears jamT, and it must not stop again halfway by)
     if (back && !b) { this.v = 0; w.s = Math.max(0, w.s - dt); this.backed = (this.backed || 0) + dt; }
     w.s = Math.min(w.len, w.s + this.v * dt);
     const q = w.at(w.s, _tw); this.place(q.x, q.z, q.h, dt);
@@ -222,7 +223,7 @@ const _tvp = new V3();
 function trafficWanted() {
   const d = getNow(), h = d.getHours() + d.getMinutes() / 60;
   const k = h < 5 ? 0.25 : h < 6.5 ? lerp(0.25, 1, (h - 5) / 1.5) : h < 21 ? 1 : h < 24 ? lerp(1, 0.35, (h - 21) / 3) : 0.25;
-  return Math.round(clamp(CFG.traffic, 0, CIV_MAX) * k);
+  return Math.min(CIV_MAX, Math.round(clamp(CFG.traffic, 0, CIV_MAX) * k * (1 + LOAD.level * 0.35)));   // (a busy night: more about)
 }
 const TRAFFIC = {
   spawnT: 3, spawned: 0, intruded: 0, pulls: 0,
@@ -230,9 +231,9 @@ const TRAFFIC = {
     for (const c of CIVS) c.update(dt);
     this.spawnT -= dt;
     if (this.spawnT <= 0) {
-      this.spawnT = rand(1.5, 3.5);
-      const on = CIVS.filter(c => c.on).length, c = CIVS.find(c => !c.on);
-      if (c && on < trafficWanted()) for (let n = 0; n < 4 && !c.spawn(); n++);   // (an end too close to another car: try another)
+      const on = CIVS.filter(c => c.on).length, c = CIVS.find(c => !c.on), want = trafficWanted();
+      this.spawnT = on < want - 3 ? rand(0.5, 1.2) : rand(1.5, 3.5);   // (well short of it: catch up quicker)
+      if (c && on < want) for (let n = 0; n < 4 && !c.spawn(); n++);   // (an end too close to another car: try another)
     }
   },
   /* a car that has stood still a long while off the screen goes (it never should: a safety net, the tests watch it) */

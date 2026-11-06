@@ -80,7 +80,7 @@ test('the dispatcher keeps units moving for 40 minutes without anyone getting st
 test('code 1 stops for a red light; code 3 slows through it', async ({ wp }) => {
   await wp.boot();
   const r = await wp.run(() => {
-    CFG.calls = 0;
+    CFG.calls = 0; CFG.traffic = 0; CFG.visitors = false; CIVS.forEach(c => c.on && c.despawn());   // (the lights alone)
     const u = UNITS[6];   // a patrol car eastbound on Main St through 1st Ave (x −50)
     const out = {};
     for (const st of ['returning', 'responding']) {

@@ -59,7 +59,11 @@ lighter still: lower the **FPS limit** in Wallpaper Engine's settings (30 is ple
 
 - **Traffic**: cars pass through town by the lights and the stop signs. When a unit comes up with lights and siren they
   pull over to the curb and stop, and the unit passes on the centre line; otherwise they give way to units turning across,
-  and back off a little if one has to get by. Property **Civilian traffic** sets how many by day (fewer at night).
+  and back off a little if one has to get by. Property **Civilian traffic** sets how many by day (fewer at night, more
+  on a busy night).
+- **Neighbouring districts**: a county engine and rescue in lime, a private ambulance service, the sheriff's SUVs pass
+  through town with lights and sirens now and then — a steady stream when the town is busy. They are not on the CAD.
+  Property **Units from other districts passing through**.
 
 ![An engine passing traffic pulled over on Main St](screenshots/traffic.jpg)
 
@@ -114,7 +118,9 @@ last radio lines and the load.
 ## Music
 
 The music doesn't start a fight here: it sets how busy the town is. The longer and louder it plays, the higher the
-**LOAD** on the panel (ROUTINE → BUSY → HEAVY → SURGE); in silence it calms down slowly.
+**LOAD** on the panel (ROUTINE → BUSY → HEAVY → SURGE): it builds over a couple of minutes and calms down over a few in
+silence. A heavy load means calls several times as often, up to six open at once, bigger ones (structure fires,
+crashes with people trapped), more units from the neighbouring districts passing through and more traffic.
 
 ## Browser preview
 

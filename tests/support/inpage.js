@@ -49,13 +49,14 @@
         if (u.pos.z - u.len / 2 < z - 0.3 && u.pos.z + u.len / 2 > z + 0.3 && d.k < 0.9) v.push(`${who(u)} through a shut door (${d.k.toFixed(2)})`);
     }
     // the body turns no faster than a car (place: ~4.5 m radius at speed); no snaps between ways
-    for (const u of UNITS) {
+    for (const u of VISITORS) if (!Number.isFinite(u.pos.x + u.pos.z + u.pos.h + u.v) || (u.state !== 'quarters' && u.state !== 'responding')) v.push(`visitor ${who(u)}: NaN or a state of its own`);
+    for (const u of MOVERS) {
       const y = u.yaw, p = H.yaws.get(u); H.yaws.set(u, { y, st: u.state });
       if (p && p.st !== 'quarters' && u.state !== 'quarters' && Math.abs(angleWrap(y - p.y)) > (Math.max(0.35, u.v / 4.5) + 0.3) * DT + 1e-4) v.push(`${who(u)} spun ${(angleWrap(y - p.y) / DEG).toFixed(1)}° in a step`);
     }
     // no two units in one place (both on the move, or one driving into a parked one)
-    for (let i = 0; i < UNITS.length; i++) for (let j = i + 1; j < UNITS.length; j++) {
-      const a = UNITS[i], c = UNITS[j];
+    for (let i = 0; i < MOVERS.length; i++) for (let j = i + 1; j < MOVERS.length; j++) {
+      const a = MOVERS[i], c = MOVERS[j];
       if (!a.model.group.visible || !c.model.group.visible || (a.state === 'quarters' && c.state === 'quarters')) continue;
       if (Math.hypot(a.pos.x - c.pos.x, a.pos.z - c.pos.z) < (a.wid + c.wid) / 2) v.push(`${who(a)} and ${who(c)} overlap`);
     }
@@ -73,7 +74,7 @@
     for (let i = 0; i < civs.length; i++) {
       const a = civs[i];
       for (let j = i + 1; j < civs.length; j++) { const b = civs[j]; if (Math.hypot(a.pos.x - b.pos.x, a.pos.z - b.pos.z) < (a.wid + b.wid) / 2) v.push(`${cw(a)} and ${cw(b)} overlap`); }
-      for (const u of UNITS) if (u.model.group.visible && Math.hypot(a.pos.x - u.pos.x, a.pos.z - u.pos.z) < (a.wid + u.wid) / 2) v.push(`${cw(a)} and ${who(u)} overlap`);
+      for (const u of MOVERS) if (u.model.group.visible && Math.hypot(a.pos.x - u.pos.x, a.pos.z - u.pos.z) < (a.wid + u.wid) / 2) v.push(`${cw(a)} and ${who(u)} overlap`);
     }
     if (!Number.isFinite(T) || !Number.isFinite(LOAD.level)) v.push('NaN in the clock or the load');
     if (LOAD.level < 0 || LOAD.level > 1) v.push(`LOAD out of range ${LOAD.level}`);
@@ -87,7 +88,7 @@
   /* how long each unit has been in its state; the longest per state (stuck detector) */
   H.reset = () => { H.since = new Map(); H.maxT = {}; };
   H.track = () => {
-    for (const u of [...UNITS, ...HELIS]) {
+    for (const u of [...MOVERS, ...HELIS]) {
       const k = H.since.get(u);
       if (!k || k.state !== u.state) { H.since.set(u, { state: u.state, t0: T }); continue; }
       const d = T - k.t0, m = H.maxT[u.state];

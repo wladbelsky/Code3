@@ -82,10 +82,12 @@ test('renaming the town redraws its signs and the panel title', async ({ wp }) =
 
 test('music raises the load, silence lets it drain', async ({ wp }) => {
   await wp.boot();
-  await wp.sim(90, { audio: true });
+  await wp.sim(60, { audio: true });
+  expect(await wp.run(() => LOAD.level), 'a minute in: still building').toBeLessThan(0.45);
+  await wp.sim(180, { audio: true });
   const up = await wp.run(() => LOAD.level);
   expect(up).toBeGreaterThan(0.5);
-  await wp.sim(120, { audio: false });
+  await wp.sim(300, { audio: false });
   const down = await wp.run(() => LOAD.level);
   expect(down).toBeLessThan(up * 0.5);
 });

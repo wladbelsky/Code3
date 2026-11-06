@@ -1,18 +1,20 @@
 'use strict';
 /* ===== The dispatcher (CAD): calls coming in, units assigned, the call's course, the terminal =====
    Calls come every (600 / CFG.calls) s, down to a quarter of that as the music builds the load (LOAD), at most
-   MAX_CALLS at once; the type is weighted by the load tier (INCIDENT_TYPES.w). A call gets one free unit (in quarters)
+   maxOpen() at once (more under load); the type is weighted by the load tier (INCIDENT_TYPES.w). A call gets one free unit (in quarters)
    of each type it needs; what is missing is filled in as units come free (status HOLDING while it has none).
    The units' state changes drive the radio (DISPATCH.onState): en route, on scene (the first arriving gives a size-up),
    updates while working, released one by one once the call's dwell has run (first arrival + dwell), available,
    in quarters. A call closes once every unit has cleared it.                                                      */
-const MAX_CALLS = 4, TRANSPORTS = new Set(['medical', 'mva']);
+const MAX_CALLS = 6, TRANSPORTS = new Set(['medical', 'mva']);
 const CALL_STATUS = { pending: 'PENDING', holding: 'HOLDING', dispatched: 'DISPATCHED', onscene: 'ON SCENE', clearing: 'CLEARING', closed: 'CLOSED' };
 const DISPATCH = {
   calls: [], timer: 25, seq: 0, fillT: 0,
   reset() { for (const c of this.calls) for (const u of c.units) if (u.callRef === c) u.callRef = null; this.calls = []; this.timer = 25; },
   get open() { return this.calls.filter(c => c.status !== 'closed'); },
-  interval() { return CFG.calls > 0 ? 600 / CFG.calls * lerp(1, 0.25, LOAD.level) * rand(0.6, 1.4) : Infinity; },
+  interval() { return CFG.calls > 0 ? 600 / CFG.calls * lerp(1, 0.14, LOAD.level) * rand(0.6, 1.4) : Infinity; },
+  /* calls open at once: 3 in a quiet town, up to MAX_CALLS under a heavy load */
+  maxOpen() { return Math.min(MAX_CALLS, 3 + Math.floor(LOAD.level * 3.4)); },
   free(type) { return (HELI_TYPES[type] ? HELIS : UNITS).filter(u => u.type === type && u.state === 'quarters' && !u.callRef); },
   /* a call type by the load tier's weights, among those whose first unit type has someone free */
   pickType() {
@@ -62,7 +64,7 @@ const DISPATCH = {
     this.timer -= dt;
     if (this.timer <= 0) {
       this.timer = this.interval();
-      if (Number.isFinite(this.timer) && this.open.length < MAX_CALLS) { const k = this.pickType(); if (k) this.newCall(k); }
+      if (Number.isFinite(this.timer) && this.open.length < this.maxOpen()) { const k = this.pickType(); if (k) this.newCall(k); }
     }
     // fill what calls still need as units come free
     this.fillT -= dt;

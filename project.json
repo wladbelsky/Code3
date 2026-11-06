@@ -116,8 +116,14 @@
 				"text": "Civilian traffic (cars by day)",
 				"type": "slider",
 				"min": 0,
-				"max": 14,
-				"value": 8
+				"max": 24,
+				"value": 16
+			},
+			"visitors": {
+				"order": 42,
+				"text": "Units from other districts passing through",
+				"type": "bool",
+				"value": true
 			},
 			"season": {
 				"order": 20,

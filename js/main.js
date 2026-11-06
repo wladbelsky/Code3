@@ -25,6 +25,7 @@ window.wallpaperPropertyListener = {
     if (has('audiosensitivity')) CFG.sens = p.audiosensitivity.value;
     if (has('callfrequency')) CFG.calls = p.callfrequency.value;
     if (has('traffic')) CFG.traffic = p.traffic.value;
+    if (has('visitors')) CFG.visitors = p.visitors.value;
     if (has('shadows')) CFG.shadows = p.shadows.value;
     if (has('season') && !QS.has('season')) CFG.season = p.season.value;
     if (has('weather')) CFG.weather = p.weather.value;
@@ -177,7 +178,7 @@ const LOAD_LABELS = ['ROUTINE', 'BUSY', 'HEAVY', 'SURGE'], loadLv = v => v < 0.2
 const LOAD = { level: 0, label: 'ROUTINE',
   update(dt) {
     const target = AUD.active && AUD.soundStart >= 0 && RT() - AUD.soundStart > 3 ? clamp(0.35 + AUD.heavy * 0.75, 0, 1) : 0;
-    this.level += (target - this.level) * dt * (target > this.level ? 0.035 : 0.012);
+    this.level += (target - this.level) * dt * (target > this.level ? 0.009 : 0.006);   // (up over ~2 min of music, down over ~3 of quiet)
     this.level = clamp(this.level, 0, 1);
     this.label = LOAD_LABELS[loadLv(this.level)];
   } };
@@ -347,6 +348,7 @@ function step(dt) {
   CITY.update(dt);
   for (const u of UNITS) u.update(dt);
   for (const h of HELIS) h.update(dt);
+  VISITS.update(dt);
   TRAFFIC.update(dt);   // (after the units: they decide who gives way)
   DISPATCH.update(dt);
   RADIO.update(dt);

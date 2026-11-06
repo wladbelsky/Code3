@@ -30,11 +30,11 @@ fictional (default FAIRHAVEN).
 |---|---|
 | `js/core.js` | utils (`V3`, `TAU`, `rand`, `clamp`, `lerp`, `smoothstep`, `pick`…), `CFG` defaults, `WIND` (smoke drift), `groundH` (flat ground), `SEASONS` + `seasonNow()`, sun position, sky palette, canvas textures `TEX` |
 | `js/models.js` | mesh helpers (`M`, `box`, `cyl`, `taper`, `prism`, `strut`, `deckLine`…), `mergeStatic`, `disposeTree`, nav lights (`navLights`, `NAV_MATS`), searchlights, seasonal shared materials `ROOF_MAT` / `HOUSE_ROOFS` (`seasonMats`) |
-| `js/vehicles.js` | vehicle models, facing +x, wheels on y = 0: civilian cars (`carModel(kind, colour)`, `randomCar`); apparatus `UNIT_MODELS` (engine, ladder with `aerial` yaw / pitch / fly, rescue, medic, chief, patrol) → `{ group, bars, len, wid, dyn }`; light bar segments swap `LB_MATS` [off, on] |
+| `js/vehicles.js` | vehicle models, facing +x, wheels on y = 0: civilian cars (`carModel(kind, colour)`, `randomCar`); apparatus `UNIT_MODELS[type](livery)` (engine, ladder with `aerial` yaw / pitch / fly, rescue, medic, chief, patrol) → `{ group, bars, len, wid, dyn }`; `LIVERY` (town / county / ambulance / sheriff, `livery(l)` fills in the town's); headlights, grille and front warning lights; light bar segments swap `LB_MATS` [off, on] |
 | `js/city.js` | `CITY_LAYOUT` (the one source of positions), `buildCity()`, `CITY` (houses with addresses, bays with roll-up doors, police lot stalls, signals, signs, `vegAt`, `signal(axis)`, `update`, `setTown`), `pavedAt` — see "Town" |
 | `js/terrain.js` | `TERRAIN`: the ground (tiled canvas texture + vertex-colour patches), the vegetation per season (InstancedMesh per kind, placed where `CITY.vegAt` allows), weather particles (snowfall, falling leaves) |
 | `js/roads.js` | `ROADS`: the street graph (crossings + far ends), `route(from, to)` (Dijkstra over node × heading: no U-turns on screen), `lane` (right-hand offsets), `way(from, to, pre, post, o)`; `Way` (rounded, sampled polyline with headings and a curvature / braking speed limit) — see "Units & traffic" |
-| `js/units.js` | `UNIT_TYPES`, `ROSTER`, `HOSP` (the ER places), `Unit` (homes, run state machine, zones, traffic rules, light bars; `radio` / `short` names, `callRef`; `transport` / `leaveHospital`; the ladder's aerial: `aimAerial`, `aerialTip`, `aerialK` / `aerialWant`), `UNITS`, `ZONES`, `houseDest` / `farDest` — see "Units & traffic" |
+| `js/units.js` | `UNIT_TYPES`, `ROSTER`, `HOSP` (the ER places), `Unit` (homes, run state machine, zones, traffic rules, light bars; `radio` / `short` names, `callRef`; `transport` / `leaveHospital`; the ladder's aerial: `aimAerial`, `aerialTip`, `aerialK` / `aerialWant`), `UNITS`, `ZONES`, `houseDest` / `farDest`; `Visitor`, `VISITORS`, `VISITS`, `MOVERS`, `offEnd` / `throughWay` — see "Units & traffic" |
 | `js/traffic.js` | `CIVS` (a pool of `CIV_MAX` civilian cars), `Civ` (spawn off screen → across town → off screen; following, crossings and their boxes `CIV_BOXES`, giving way to units `unitCap`, pulling over for code 3, easing round obstacles, backing off), `TRAFFIC` (spawning by `trafficWanted`: `CFG.traffic` by the hour), `wayBoxes`, `boxConflict`, `alongStreet` — see "Civilian traffic" |
 | `js/radio.js` | line pools (`DISPATCH_LINES`, `ACK_LINES`, `ON_SCENE`, `UPDATE_LINES`, `CLEAR_LINES`…), `radioLine(pool, vars)`, load tiers, `cadNow`, `RADIO` (the queue the terminal prints) — see "CAD" |
 | `js/incidents.js` | `INCIDENT_TYPES`, sites (houses, `BUSINESSES`, street spots, crossings, far ends), `pickSite`, `siteSlots`, `siteDest` |
@@ -52,15 +52,16 @@ fictional (default FAIRHAVEN).
 
 ## Rules / conventions
 - **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in
-  `index.html` (WE's CEF caches aggressively). Current: `v=12`.
+  `index.html` (WE's CEF caches aggressively). Current: `v=13`.
 - **New WE property**: add it to `project.json`, read it in `applyUserProperties` (`main.js`) into `CFG`,
   then run `python tools/gen_properties.py`. Property `order` decides the browser-drawer group
   (0–9 camera/time, 10–19 audio/calls, 20–29 terrain & season, 30–39 panel & terminal, 40–49 units, 50–59 town).
 - Match the existing style: dense one-liners, short comments, `const` scratch vectors at module level.
 - Sim time is `T` (advances only in `step(dt)`); real time is `RT()` (audio, beat gaps).
 - **No scrolling UI**: WE passes clicks and mouse movement to the wallpaper but not the wheel (page long lists).
-- **The music is load, not combat**: `LOAD.level` (0..1) climbs while sound plays (faster when dense, `AUD.heavy`) and
-  drains slowly in silence; labels ROUTINE / BUSY / HEAVY / SURGE. `AUD.beat` = `T` of the last low / mid beat.
+- **The music is load, not combat**: `LOAD.level` (0..1) climbs while sound plays (higher when dense, `AUD.heavy`) over
+  ~2 minutes and drains over ~3 in silence; what it drives must show: calls every `600 / calls` s × (1 … 0.14), up to
+  3 … 6 open (`maxOpen`), the heavier types (tiers), the visitors, a third more traffic; labels ROUTINE / BUSY / HEAVY / SURGE. `AUD.beat` = `T` of the last low / mid beat.
 
 ## World & town (`js/city.js`)
 - World axes: +X east, +Y up, +Z south; **1 unit = 1 m** (Forward Air Base: 10 m — its vegetation is scaled by
@@ -101,24 +102,34 @@ fictional (default FAIRHAVEN).
   → [parking] → quarters. `UNIT_STATES` = state labels, `TILE_STATES` (`main.js`) = the board's tiles; a new state needs an
   entry in both (the harness checks; a helicopter's: `HELI_STATES` and `TILE_STATES`).
 - **Zones** (`ZONES`: apron, yard, lot) — one unit at a time: a crew ready to roll books the apron / the lot (`take(z,
-  true)`; it may take it over from one still > 60 m out on its way home), freed once `clear`; a unit coming home books
+  true)`; it may take it over from one on its way home still > 20 m short of its waiting point — past it, it would stop where it stands, maybe in a crossing), freed once `clear`; a unit coming home books
   the yard / the lot ~40 m before its waiting point (`waitS`: in the lane at z 14 / 28 m short of the gate; never in a
   crossing's box — at its line instead) and waits
   there while it is busy, the nearest to its waiting point first (`homeRem`: a lane's order; it takes the zone over from a
   holder that fell behind it); freed in quarters. Every zone holder must reach a
   state that frees it (quarters, `arrive`).
 - **Traffic rules** (per step, in `drive`): `gapCap` (follow the unit ahead in the lane: stop within the gap allowing
-  for its own braking), `crossCap` (code 1 stops at the line on red / rolls through stops; code 3 slows to 6 m/s through
-  a crossing), `yieldCap` (paths that cross within ~3 s: the later one stops short; a tie goes to code 3, then the lower
+  for its own braking), `crossCap` (code 1 stops at the line on red / rolls through stops; code 3 slows to 7 m/s through
+  a red, 10 through a stop), `yieldCap` (paths that cross within ~3 s: the later one stops short; a tie goes to code 3, then the lower
   roster number), pulling away from a curb waits for `trafficBy`. Each unit records whom it waits for (`wait`, `waitKind`
   'move' / 'zone'); `leads(o)`: units waiting on each other round a circle — the first 'move' waiter (code 3 first, then
   the roster) drives on. The harness flags two units closer than half their widths, a unit through a shut door, and
   states held past `STATE_LIMITS`.
+- **Code 3 runs** (`runOpts(true)`: responding, a code-3 transport, the visitors): vmax × 1.12, `alat` × 1.4, braking
+  4 m/s², off the line × 1.4, 6 m/s through a red, 8 through a stop — they drive like a run, not like the drive home.
+  (Pushing it further — × 1.25 / 1.6, 7 / 10 m/s — gained ~0.3 m/s on average on these short blocks and broke the
+  giving-way timings: overlaps. The blocks are 100 m: a run is mostly getting up to speed and braking for the next turn.)
+- **Visitors** (`VISITORS`, `Visitor extends Unit`, `VISITS`; property `visitors`): units of the neighbouring districts
+  (`VISITOR_ROSTER`, liveries `LIVERY.county / ambulance / sheriff`) passing through code 3 — `throughWay` (off the screen in
+  on one street, out on another, as the civilian cars), hidden in 'quarters' between passes, never on the CAD or the board.
+  At once `1 + floor(LOAD × 2.6)`, one every `lerp(200, 25, LOAD)` s × rand. **`MOVERS`** = units + visitors: everything
+  physical (following, giving way, crossings, cars pulling over, the harness's overlaps) iterates `MOVERS`; the CAD, the
+  zones and the board iterate `UNITS`.
 - **Light bars**: `flash(on, a)` swaps the segments' materials and the glow points' `userData.on` only on a change; with
   music (`LOAD.level` > 0.15) every beat swaps the sides, otherwise they alternate at ~2.4 Hz.
 
 ## CAD (`js/dispatch.js`, `js/incidents.js`, `js/radio.js`)
-- **Calls**: every `600 / CFG.calls` s × (1 … 0.25 with `LOAD`) × rand, at most `MAX_CALLS` open; the type by the load
+- **Calls**: every `600 / CFG.calls` s × (1 … 0.14 with `LOAD`) × rand, at most `maxOpen()` open (3 quiet … `MAX_CALLS` 6); the type by the load
   tier's weights (`INCIDENT_TYPES.w` = [routine, busy, surge]) among types whose first unit type has someone free.
   `newCall(key)` → a site of one of the type's kinds (`pickSite`, ≥ 70 m from other open calls on the same street) →
   `assign`: one free unit (quarters, no `callRef`) per needed type (+ `extra` by chance); what is missing is filled in
@@ -155,8 +166,8 @@ fictional (default FAIRHAVEN).
 - **CrashScene**: the wrecks 11 / 17 m from the crossing; the units' curb (`crossingSite`) 30 m up the approach.
 
 ## Civilian traffic (`js/traffic.js`)
-- A pool of `CIV_MAX` (14) cars built once; `CFG.traffic` (property **traffic**) of them by day, a quarter at night
-  (`trafficWanted`). Each comes in off the screen on a street end (`spawn`: the first point off the screen ≥ 175 m out) and
+- A pool of `CIV_MAX` (24) cars built once; `CFG.traffic` (property **traffic**, default 16) of them by day, a quarter at
+  night, a third more under a full load (`trafficWanted`); well short of it, they spawn every ~1 s instead of ~2.5. Each comes in off the screen on a street end (`spawn`: the first point off the screen ≥ 175 m out) and
   leaves off the screen on another (`ROADS.way` on the right lane, `vmax` 10–12.5), then goes back to the pool.
 - **Crossings** (`way.boxes` from `wayBoxes`: key, way distances in / out, entry / exit headings, signal): stop at the line
   on red (or yellow when it can), a full stop then in turn at all-way stops; into a box only when no car committed to it
@@ -176,6 +187,17 @@ fictional (default FAIRHAVEN).
   (`oncoming`)), back in 25 m before its stop (crawling if a car is still alongside); into a turn slowly, and back in first if a car comes the other way.
   Coming back in, its `gapCap` measures the cars from the lane it is going to, not from where it is (a car pulled over
   just short of its stop was out of its way on the centre line and right in it back in the lane: too late to brake).
+- **Pulled over**, a car stays at the curb till the unit's tail is 3 m by — 10 m while the unit is still coming back in
+  off the centre line or slower than 6 m/s (it cuts in just ahead, slowing for a turn). The unit stays out on a straight
+  while a car is alongside or within its stopping distance (`abreast`), whatever comes the other way in its own lane;
+  two out head-on: the one later in the roster goes back in. It starts out only with no unit coming within 60 m + 3 s.
+- **Queues and boxes**: a car standing in a queue short of a box (whoever is ahead stands too) has no claim on it
+  (`queued`: one it cannot use holds up the cross traffic, maybe what the one ahead waits for); a unit `held` for its zone
+  or a red does not hold a box it is not in. A car jammed with a unit and no room to back (a unit close behind, or 8 m
+  backed) squeezes by the unit's nose with no margin for 6 s (`squeeze`). A car backs off from a unit it follows too
+  (`gapCap`), not only one it gives way to, when that unit waits for it (one cutting in to its curb across the lane).
+- **Pulling away** from a curb (`trafficBy`): nobody coming its way within ~4 s behind (`o.v × 4 + 10` m, ≥ 35), in a
+  10 m wide band (it is already turned out toward the lane).
 - **Obstacles** at the curb (units on scene, wrecks, burnt cars): a car eases left round them, slowly.
 - The tests count cars let into a box without committing (`TRAFFIC.intruded`, must be 0) and watch `civStill` (a car
   standing > 100 s) with the stuck detector.

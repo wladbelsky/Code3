@@ -5,10 +5,10 @@ test('cars come in, cross the town by the lights and the stops, and leave; nobod
   test.setTimeout(4 * 60 * 1000);
   await wp.boot();
   await wp.run(() => { CFG.calls = 0; CFG.traffic = 14; });
-  const r = await wp.sim(600);
-  expect(r.violations).toEqual([]);
-  const s = await wp.run(() => ({ spawned: TRAFFIC.spawned, on: CIVS.filter(c => c.on).length, gone: TRAFFIC.spawned - CIVS.filter(c => c.on).length, intruded: TRAFFIC.intruded }));
-  expect(s.on).toBeGreaterThanOrEqual(11);
+  expect((await wp.sim(400)).violations).toEqual([]);
+  const on = await wp.run(() => { const n = []; for (let i = 0; i < 40; i++) { const r = __t.sim(5); if (r.violations.length) return r.violations; n.push(CIVS.filter(c => c.on).length); } return n.reduce((a, b) => a + b) / n.length; });
+  expect(on, 'cars on the streets (the last 200 s on average)').toBeGreaterThanOrEqual(11);
+  const s = await wp.run(() => ({ spawned: TRAFFIC.spawned, gone: TRAFFIC.spawned - CIVS.filter(c => c.on).length, intruded: TRAFFIC.intruded }));
   expect(s.gone, 'cars leave at the far side').toBeGreaterThan(15);
   expect(s.intruded, 'into a crossing without being let in').toBe(0);
   expect(await wp.stuck()).toEqual([]);
@@ -53,4 +53,27 @@ test('the traffic property: none at 0; fewer cars at night', async ({ wp }) => {
   const n = await wp.run(() => [CIVS.filter(c => c.on).length, trafficWanted()]);
   expect(n[1]).toBeLessThan(6);
   expect(n[0]).toBeLessThanOrEqual(n[1]);
+});
+
+test('units of the neighbouring districts pass through with lights, off the board; none with the property off', async ({ wp }) => {
+  test.setTimeout(4 * 60 * 1000);
+  await wp.boot();
+  const r = await wp.run(() => {
+    CFG.calls = 0; LOAD.level = 0.9;
+    const seen = new Set(); let dark = 0;
+    for (let i = 0; i < 8000; i++) {
+      const x = __t.sim(0.05, { audio: true }); if (x.violations.length) return { v: x.violations };
+      for (const v of VISITORS) if (v.model.group.visible) { seen.add(v.cs); if (!v.lights) dark++; }
+    }
+    return { seen: seen.size, passed: VISITS.passed, dark, tiles: document.querySelectorAll('#units .tile').length, board: UNITS.length + HELIS.length, cad: RADIO.log.filter(l => VISITORS.some(v => l.text.includes(v.short))).length };
+  });
+  expect(r.v).toBeUndefined();
+  expect(r.passed, 'a stream of them under a heavy load').toBeGreaterThanOrEqual(3);
+  expect(r.seen).toBeGreaterThanOrEqual(2);
+  expect(r.dark, 'lights on all the way').toBe(0);
+  expect(r.tiles, 'not on the board').toBe(r.board);
+  expect(r.cad, 'not on the CAD').toBe(0);
+  const off = await wp.run(() => { __t.props({ visitors: false }); const p = VISITS.passed; const x = __t.sim(300, { audio: true }); return { v: x.violations, more: VISITS.passed - p, out: VISITORS.filter(v => v.model.group.visible).length }; });
+  expect(off).toEqual({ v: [], more: 0, out: 0 });
+  expect(await wp.stuck()).toEqual([]);
 });

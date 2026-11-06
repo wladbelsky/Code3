@@ -27,7 +27,8 @@ const CFG = {
   lon: -new Date().getTimezoneOffset() / 4,   // longitude estimated from the PC time zone (15° per hour)
   sens: 100,          // audio sensitivity, %
   calls: 5,           // how often calls come in when it is quiet (0 = never)
-  traffic: 8,         // civilian cars on the streets by day (fewer at night; 0 = none, up to CIV_MAX)
+  traffic: 16,        // civilian cars on the streets by day (fewer at night, more under load; 0 = none, up to CIV_MAX)
+  visitors: true,     // units of the neighbouring districts passing through with lights (VISITS)
   townName: 'FAIRHAVEN',   // the town (dispatch, panel)
   season: 'auto',     // auto (PC date) / spring / summer / autumn / winter
   weather: true,      // snowfall in winter, falling leaves in autumn
