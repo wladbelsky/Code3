@@ -253,7 +253,7 @@ function demoAudio() {
 let uiTimer = 0, meterTimer = 0, envTimer = 0;
 const TILE_STATES = {   // state → [label, class]: AVAIL green, DISP / ENRT amber, ONSC red, TRAN / AT HOSP blue
   quarters: ['In qtrs', 'avl'], turnout: ['Disp', 'dsp'], pullout: ['Enrt', 'enr'], responding: ['Enrt', 'enr'], on_scene: ['On scene', 'osc'],
-  away: ['On scene', 'osc'], returning: ['Avail', 'ret'], parking: ['Avail', 'ret'], transporting: ['Transport', 'trn'], at_hospital: ['At hosp', 'trn']
+  away: ['On scene', 'osc'], returning: ['Avail', 'ret'], parking: ['Avail', 'ret'], transporting: ['Transport', 'trn'], at_hospital: ['At hosp', 'trn'], drill: ['Training', 'avl']
 };
 function buildUI() {
   document.getElementById('collapse').onclick = () => {
@@ -349,6 +349,7 @@ function step(dt) {
   for (const u of UNITS) u.update(dt);
   for (const h of HELIS) h.update(dt);
   VISITS.update(dt);
+  DRILLS.update(dt);
   TRAFFIC.update(dt);   // (after the units: they decide who gives way)
   DISPATCH.update(dt);
   RADIO.update(dt);

@@ -23,7 +23,7 @@ const UNIT_TYPES = {
 const ROSTER = [['engine', 'ENGINE 12', { bay: 0 }], ['ladder', 'LADDER 12', { bay: 1 }], ['rescue', 'RESCUE 12', { bay: 2 }],
   ['medic', 'MEDIC 12', { bay: 3 }], ['medic', 'MEDIC 14', { bay: 4 }], ['chief', 'BATTALION 1', { bay: 5 }],
   ['patrol', '2-ADAM-11', { stall: 3 }], ['patrol', '2-ADAM-12', { stall: 4 }], ['patrol', '2-ADAM-14', { stall: 5 }], ['patrol', '2-ADAM-15', { stall: 6 }]];   // (stalls clear of the lot's west edge: they back out westward)
-const UNIT_STATES = { quarters: 'IN QTRS', turnout: 'TURNOUT', pullout: 'TURNOUT', responding: 'ENROUTE', on_scene: 'ON SCENE', away: 'ON SCENE', returning: 'RETURNING', parking: 'RETURNING', transporting: 'TRANSPORT', at_hospital: 'AT HOSP' };
+const UNIT_STATES = { quarters: 'IN QTRS', turnout: 'TURNOUT', pullout: 'TURNOUT', responding: 'ENROUTE', on_scene: 'ON SCENE', away: 'ON SCENE', returning: 'RETURNING', parking: 'RETURNING', transporting: 'TRANSPORT', at_hospital: 'AT HOSP', drill: 'TRAINING' };
 /* the ER: in from Main St at x 72, under the canopy heading east (two places), out at x 96 */
 const HOSP = { inX: 72, outX: 96, z: 31, slots: [{ x: 88, unit: null }, { x: 80, unit: null }] };
 const MAIN_Z = 50;
@@ -199,7 +199,7 @@ class Unit {
     if (this.state === 'responding' && ZONES[this.zoneOut] === this && this.clear) this.free();
     if (H.bay) {   // the front door shuts once it is out; both once it is home
       if (H.bay.door.want && this.state === 'responding' && this.pos.z > H.bay.zFront + this.len / 2 + 2) H.bay.door.want = 0;
-      if (this.state === 'quarters') H.bay.door.want = H.bay.rear.want = 0;
+      if (this.state === 'quarters' && DRILLS.unit !== this) H.bay.door.want = H.bay.rear.want = 0;
     }
     this.updateLights();
   }
@@ -215,7 +215,7 @@ class Unit {
       const g = this.gapCap(), y = this.yieldCap(w), x = this.crossCap(w);
       vt = Math.min(vt, g, y, x);
       if (vt < 0.5) { wait = y <= g ? this.yieldTo : this.blocker; kind = wait && 'move'; }
-      this.held = x < 0.5 || (this.enterHeld && vt < 0.5);   // (at a red light, or waiting to get onto a street: its way ahead is not claimed — Civ.unitCap)
+      this.held = x < 0.5 || (vt < 0.5 && (this.enterHeld || kind === 'move'));   // (waiting for someone to move: no claim ahead either)   // (at a red light, or waiting to get onto a street: its way ahead is not claimed — Civ.unitCap)
     }
     // on the way home: book the yard / the lot ~40 m before the waiting point; wait there while it is busy
     if (this.state === 'returning' && w === this.firstWay && ZONES[this.zoneIn] !== this && w.s > this.waitS - 40) {
@@ -249,6 +249,7 @@ class Unit {
   /* the end of the last leg */
   arrive() {
     this.v = 0;
+    if (this.state === 'drill') { DRILLS.arrived(this); return; }
     if (this.state === 'transporting') { this.state = 'at_hospital'; this.t = 0; this.dwellH = rand(40, 80); this.lights = false; return; }
     if (this.state === 'responding') {
       if (this.call.far) { this.state = 'away'; this.model.group.visible = false; } else this.state = 'on_scene';
@@ -276,7 +277,7 @@ class Unit {
         if (Math.abs(angleWrap(q.h - this.pos.h)) < 2.4) continue; const dx = q.x - this.pos.x, dz = q.z - this.pos.z, along = dx * c + dz * s, lat = -dx * s + dz * c + lo;
         if (along > -this.len && along < 60 + (o.v + this.v) * 3 && lat > -7 && lat < 1) return true; }
       return false; };
-    return MOVERS.some(o => o.way && o !== this && o.model.group.visible && (near(o, 60 + (o.v + this.v) * 3) || turning(o))) || (cars > 0 && CIVS.some(o => o.on && !o.pulled && near(o, cars)));
+    return MOVERS.some(o => o.way && o !== this && o.model.group.visible && (near(o, 60 + (o.v + this.v) * 3) || turning(o))) || CIVS.some(o => o.on && !(o.pulled && o.lat > 0.6) && near(o, (this.wid + o.wid) / 2 + 0.05 > LANE_OFF ? Math.max(cars, 50) : cars));   // (cars only when asked — and a wide one even on a straight: out on the centre line it would brush it)
   }
   /* someone driving by close behind or alongside (either lane) */
   trafficBy() {
@@ -331,7 +332,7 @@ class Unit {
       if (Math.abs(o.pos.x - this.pos.x) + Math.abs(o.pos.z - this.pos.z) > 110) continue;
       const R = (this.wid + o.wid) / 2 + 0.6, ow = o.way, pts = YIELD_PTS; pts.length = 0;
       pts.push(o.pos.x, o.pos.z, 0);
-      const hj = clamp(o.v * 3, 12, 45), hk = clamp(this.v * 3, 26, 45);   // ~3 s ahead for both
+      const hj = clamp(o.v * 3, 12, 45), hk = clamp(Math.max(this.v * 3, this.v * this.v / 8 + 15), 26, 80);   // ~3 s ahead for both; its own at least its stopping distance
       const olo = o.passing ? -LANE_OFF : (o.latOff || 0);   // (where it really drives: out on the centre line while passing)
       if (ow) for (let j = 2; j <= hj && ow.s + j <= ow.len; j += 2) { const q = ow.at(ow.s + j, _ub); pts.push(q.x - Math.sin(q.h) * olo, q.z + Math.cos(q.h) * olo, j); }
       for (let k = 2; k <= hk && w.s + k <= w.len; k += 1.5) {
@@ -365,11 +366,13 @@ class Unit {
     for (const o of CIVS) {
       if (!o.on || Math.abs(o.pos.x - this.pos.x) + Math.abs(o.pos.z - this.pos.z) > 60) continue;
       if ((o.pos.x - this.pos.x) * Math.cos(this.pos.h) + (o.pos.z - this.pos.z) * Math.sin(this.pos.h) < 0) continue;   // (behind it)
-      const R = (this.wid + o.wid) / 2 + 0.05, c = Math.cos(o.pos.h), s = Math.sin(o.pos.h), e = o.len / 2 - o.wid / 2;
+      let R = (this.wid + o.wid) / 2 + 0.05; const c = Math.cos(o.pos.h), s = Math.sin(o.pos.h), e = o.len / 2 - o.wid / 2;
+      const waits = o.yieldTo === this && o.v < 0.2;   // (standing there waiting for this unit, maybe boxed in: by it close, centre to centre)
+      if (Math.abs(angleWrap(o.pos.h - this.pos.h)) > 2.6) R -= 0.3;   // (coming the other way in the next lane: they pass)
       for (let k = 1; k <= reach && w.s + k <= w.len; k += 1) {
         const p = w.at(w.s + k, _ub), lo = k > 8 && this.passing ? -LANE_OFF : (this.latOff || 0);
         if (lo) { p.x -= Math.sin(p.h) * lo; p.z += Math.cos(p.h) * lo; }
-        if (Math.hypot(p.x - o.pos.x - c * e, p.z - o.pos.z - s * e) < R || Math.hypot(p.x - o.pos.x, p.z - o.pos.z) < R || Math.hypot(p.x - o.pos.x + c * e, p.z - o.pos.z + s * e) < R) {
+        if (waits ? Math.hypot(p.x - o.pos.x, p.z - o.pos.z) < R + 0.25 : Math.hypot(p.x - o.pos.x - c * e, p.z - o.pos.z - s * e) < R || Math.hypot(p.x - o.pos.x, p.z - o.pos.z) < R || Math.hypot(p.x - o.pos.x + c * e, p.z - o.pos.z + s * e) < R) {
           const cc = Math.sqrt(7 * Math.max(0, k - this.len / 2 - 0.5)); if (cc < cap) { cap = cc; this.yieldTo = o; }
           break;
         }
@@ -382,7 +385,7 @@ class Unit {
   crossCap(w) {
     if (this.state !== 'responding' && this.state !== 'returning' && this.state !== 'transporting') return Infinity;
     const code3 = this.state === 'responding' || (this.state === 'transporting' && this.code3);
-    for (let k = 1; k <= 45; k++) {   // the first point of the way inside a crossing (the box between the sidewalks)
+    for (let k = 1, kk = Math.max(45, this.v * this.v / 8 + 12); k <= kk; k++) {   // the first point of the way inside a crossing (the box between the sidewalks), within its stopping distance
       if (w.s + k > w.len) break;
       const p = w.at(w.s + k, _ub), x = Math.round(p.x / 50) * 50, z = Math.round(p.z / 50) * 50;
       if (Math.abs(p.x - x) > EDGE || Math.abs(p.z - z) > EDGE || !CITY_LAYOUT.avenues.some(a => a.x === x) || !CITY_LAYOUT.streets.some(s => s.z === z)) continue;
@@ -390,13 +393,13 @@ class Unit {
       // another unit in the box on a move across this one (and not giving way to it), or a car in it (or that can no longer
       // stop short of it): wait at the line — or where it stands, its nose over it but itself not in yet
       const key = x + ',' + z, my = stop > -this.len && (w.boxes || (w.boxes = wayBoxes(w))).find(b => b.key === key && w.s - this.len / 2 < b.s1);
-      if (my && stop > -this.len / 2) for (const o of MOVERS) {   // (another unit: only while its nose is barely over the line — a car in the box: half its length in, braking for it from code 3)
+      if (my && stop > -this.len / 2) for (const o of MOVERS) {   // (another unit: only while its nose is barely over the line)
         if (o === this || !o.way || o.way.rev || !o.model.group.visible || o.yieldTo === this || Math.abs(o.pos.x - x) > EDGE || Math.abs(o.pos.z - z) > EDGE) continue;
         const ob = (o.way.boxes || (o.way.boxes = wayBoxes(o.way))).find(b => b.key === key && o.way.s - o.len / 2 < b.s1);
         if (ob && boxConflict(ob, my)) { this.yieldTo = this.yieldTo || o; return Math.sqrt(2 * 3 * Math.max(0, stop)); }
       }
-      if (my) for (const o of CIV_BOXES.get(key) || []) if (o.boxIn && o.way.s + o.len / 2 > o.boxIn.s0 - o.v * o.v / 10 - 1 && boxConflict(o.boxIn, my)) { this.yieldTo = this.yieldTo || o; return Math.sqrt(2 * 3 * Math.max(0, stop)); }   // (a car in it or past stopping, too)
-      if (stop < -1.5) return Infinity;                  // already over the line: clear out (a car in the box it waits for even half a length in: braking for it from code 3 it may be)
+      if (my) for (const o of CIV_BOXES.get(key) || []) if (o.boxIn && o.yieldTo !== this && o.way.s + o.len / 2 > o.boxIn.s0 - o.v * o.v / 10 - 1 && boxConflict(o.boxIn, my)) { this.yieldTo = this.yieldTo || o; return Math.sqrt(2 * 3 * Math.max(0, stop)); }   // (a car in it or past stopping, too)   // (a car in the box: until half its length is in, braking for it from code 3 — not one that waits for this unit's body: it clears out)
+      if (stop < -1.5) return Infinity;                  // already over the line: clear out
       const sig = CITY_LAYOUT.signals.some(s => s[0] === x && s[1] === z), axis = Math.abs(Math.cos(p.h)) > Math.abs(Math.sin(p.h)) ? 'ew' : 'ns';
       const light = sig ? CITY.signal(axis) : 'g', red = sig && (light === 'r' || (light === 'y' && this.v * this.v / 9 < stop));
       const vIn = code3 ? (red ? 6 : !sig ? 8 : Infinity) : (red ? 0 : sig ? Infinity : 2.2), dec = code3 ? 4 : 3;   // (code 3: slowly through a red, a little quicker through a stop)
@@ -432,6 +435,81 @@ function buildUnits() {
   VISITORS = VISITOR_ROSTER.map(([type, cs, liv], i) => new Visitor(type, cs, LIVERY[liv], 100 + i));
   MOVERS = [...UNITS, ...VISITORS];
 }
+
+/* ===== Station life in a quiet town: drills on the apron =====
+   With the load low, now and then a fire / EMS unit rolls out of its bay onto the apron (the front door up) and stands
+   there a couple of minutes: the engine tests its pump (the deck gun straight up), the ladder raises its aerial, the
+   rescue and the medics get washed (a hose and suds). Then it backs in and the door comes down. State 'drill' (not free:
+   the dispatcher's free() wants quarters) — a call that needs that kind of unit, or the load rising, ends it early. */
+const DRILL_KINDS = { engine: 'pump', ladder: 'aerial', rescue: 'wash', medic: 'wash' };
+const _dv = new V3(), _dw = new V3();
+const DRILLS = {
+  timer: 150, unit: null, ph: null, t: 0, dur: 0, crew: [], acc: {}, done: 0,
+  /* the apron in front of its bay: rolled out till its tail is just clear of the door */
+  spot(u) { const b = u.home.bay; return b.zFront + u.len / 2 + 0.6; },
+  start(u) {
+    const H = u.home; this.unit = u; this.ph = 'door'; this.t = 0; this.dur = rand(80, 140); this.acc = {};
+    u.state = 'drill'; u.lights = false; u.t = 0; H.bay.door.want = 1;
+    RADIO.say('CAD', `${u.short}  OOS  TRAINING`, 'sys');
+  },
+  /* the end of a short way: out on the apron → the work; back in the bay → quarters */
+  arrived(u) {
+    if (this.ph === 'out') { this.ph = 'work'; this.t = 0; this.addCrew(u); }
+    else if (this.ph === 'in') {
+      u.state = 'quarters'; u.t = 0; u.place(u.home.x, u.home.z, u.home.h, false);
+      this.unit = null; this.ph = null; this.done++;
+      RADIO.say('CAD', `${u.short}  IN SVC`, 'sys');
+    }
+  },
+  addCrew(u) {
+    const n = u.type === 'medic' ? 2 : 3, side = [-1, -1, 1];   // (mostly on the west side: the camera's)
+    for (let k = 0; k < n; k++) { const i = CREW.take(u.spec.svc, u.pos.x + side[k] * (u.wid / 2 + 1.1), u.pos.z + (k - 1) * 2.6, rand(0, TAU)); if (i != null) this.crew.push(i); }
+  },
+  dropCrew() { for (const i of this.crew) CREW.drop(i); this.crew = []; },
+  /* back in: the aerial bedded first */
+  end() {
+    const u = this.unit; if (!u || this.ph === 'in') return;
+    if (this.ph === 'door') { u.state = 'quarters'; u.home.bay.door.want = 0; this.unit = null; this.ph = null; return; }
+    if (u.model.aerial) u.aerialWant = 0;
+    this.ph = 'bed';
+  },
+  needed(u) { return DISPATCH.open.some(c => c.need.filter(t => t === u.type).length > c.units.filter(x => x.type === u.type).length); },
+  update(dt) {
+    const u = this.unit;
+    if (!u) {
+      if (CFG.calls === 0 || LOAD.level > 0.2 || (this.timer -= dt) > 0) return;
+      this.timer = rand(180, 360);
+      const c = UNITS.filter(x => DRILL_KINDS[x.type] && x.state === 'quarters' && x.home.bay && !ZONES.apron && !this.needed(x));
+      if (c.length) this.start(pick(c));
+      return;
+    }
+    this.t += dt;
+    if (this.ph !== 'bed' && this.ph !== 'in' && (LOAD.level > 0.3 || this.needed(u))) this.end();
+    const H = u.home, z1 = this.spot(u);
+    if (this.ph === 'door' && H.bay.door.k > 0.97 && !ZONES.apron) {   // (nobody rolling out right now)
+      this.ph = 'out'; u.go([{ way: new Way([[H.x, H.z], [H.x, z1]], { vmax: 2.2, alat: 2, vEnd: 0 }) }]);
+    } else if (this.ph === 'work') {
+      const kind = DRILL_KINDS[u.type], c = Math.cos(u.pos.h), s = Math.sin(u.pos.h);
+      if (kind === 'pump') {   // the deck gun straight up, falling back on the apron ahead
+        _dv.set(u.pos.x - c * 1.2, 3.5, u.pos.z - s * 1.2); this.acc.w = (this.acc.w || 0) + dt * 45;
+        while (this.acc.w > 1) { this.acc.w--; FX.water.spawn(_dv, { v: _dw.set(c * rand(2.6, 3.4) + rand(-0.5, 0.5), rand(11, 12.5), s * rand(2.6, 3.4) + rand(-0.5, 0.5)), rise: -9.8, s0: 0.3, s1: 1.5, life: 2.5, a0: 0.8, color: 0xdcecff }); }
+      } else if (kind === 'aerial') {
+        if (!u.aerialWant) u.aimAerial(_dv.set(u.pos.x + c * 4, 19, u.pos.z + s * 4));
+      } else {   // the wash: a hose on the side, suds
+        _dv.set(u.pos.x - (u.wid / 2 + 1.1), 1.1, u.pos.z - 2.6); _dw.set(u.pos.x, 2.6, u.pos.z + rand(-3, 3));
+        waterArc(_dv, _dw, this.acc, dt, 36);
+        this.acc.s = (this.acc.s || 0) + dt * 7;   // (suds on the west side and over the roof)
+        while (this.acc.s > 1) { this.acc.s--; const roof = Math.random() < 0.4; FX.smoke.spawn(_dw.set(u.pos.x - (roof ? rand(-0.8, 0.8) : u.wid / 2 + rand(0.1, 0.4)), roof ? 3.3 : rand(0.5, 2.6), u.pos.z + rand(-u.len / 2, u.len / 2) * 0.85), { v: _dv.set(0, 0.25, 0), s0: 0.9, s1: 2.2, life: rand(2.5, 4), a0: 0.85, color: 0xb8d4ec }); }
+      }
+      if (this.t > this.dur) this.end();
+    }
+    if (this.ph === 'bed' && !(u.aerialK > 0.01)) {   // (bedded: back in, the crew aboard)
+      this.dropCrew(); this.ph = 'in';
+      u.go([{ way: new Way([[H.x, z1], [H.x, H.z]], { rev: true, vmax: 1.6, r: 5 }) }]);
+    }
+    if (this.ph === 'in' || this.ph === 'out') H.bay.door.want = 1;
+  }
+};
 
 /* ===== Visitors: units of the neighbouring districts passing through, lights and sirens (background only: not on the
    CAD, not on the board — off the screen in along one street, across town, off the screen out along another). They drive

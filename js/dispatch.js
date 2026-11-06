@@ -34,12 +34,14 @@ const DISPATCH = {
     this.assign(c);
     return c;
   },
-  /* the first curb place of the site that none of the call's other units holds (they come and go: a count would repeat one) */
+  /* the first curb place of the site that no other unit holds (they come and go: a count would repeat one) */
   freeSlot(c, u) {
     if (c.site.kind === 'far') return 0;
-    const taken = new Set(c.units.filter(x => x !== u && !x.air && x.callRef === c && x.call && x.call.curb).map(x => x.call.curb.join()));
+    // (taken: a curb another unit is headed for or still stands at — of this call or one just closed, not yet pulled away)
+    const near = (q, x) => Math.hypot(q[0] - x[0], q[1] - x[1]) < 10;
+    const taken = q => UNITS.some(x => x !== u && x.state !== 'quarters' && ((x.call && x.call.curb && x.state !== 'returning' && near(q, x.call.curb)) || near(q, [x.pos.x, x.pos.z])));
     const n = siteSlots(c.site).length; let k = 0;
-    while (k < n - 1 && taken.has(siteDest(c.site, k).curb.join())) k++;
+    while (k < n - 1 && taken(siteDest(c.site, k).curb)) k++;
     return k;
   },
   /* free units for what the call still needs: the tone-out (or a patrol's own stop) and the acknowledgements */

@@ -69,6 +69,10 @@ lighter still: lower the **FPS limit** in Wallpaper Engine's settings (30 is ple
 
 ![A winter night run](screenshots/run.jpg)
 
+- **Quiet hours at the station**: when the town is calm a unit rolls out onto the apron now and then — the engine tests
+  its pump, the ladder raises its aerial, the ambulances get washed — and backs in again. At night every car and unit
+  lights the road ahead.
+
 ## Dispatch
 
 Calls come in on their own: medical calls and falls, fire alarms, structure fires, crashes, vehicle fires, gas odors,

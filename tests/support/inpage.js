@@ -36,7 +36,7 @@
   /* ---- invariants checked after every step ---- */
   // per-state limits for the stuck detector (s); EXEMPT states are held by the dispatcher (drills / calls)
   H.yaws = new Map();
-  H.STATE_LIMITS = { turnout: 90, pullout: 30, responding: 300, returning: 400, parking: 60, transporting: 400, at_hospital: 120, civStill: 100 };   // (a car: two red lights and a unit going by)
+  H.STATE_LIMITS = { turnout: 90, pullout: 30, responding: 300, returning: 400, parking: 60, transporting: 400, at_hospital: 120, drill: 400, civStill: 100 };   // (a car: two red lights and a unit going by)
   H.EXEMPT = new Set(['quarters', 'on_scene', 'away']);
   H.checkInvariants = () => {
     const v = [], who = u => `${u.cs}[${u.state}]`;

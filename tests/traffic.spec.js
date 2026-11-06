@@ -16,7 +16,7 @@ test('cars come in, cross the town by the lights and the stops, and leave; nobod
 
 test('a code-3 run: a car ahead pulls over and stops, the unit passes it on the centre line, then the car goes on', async ({ wp }) => {
   await wp.boot();
-  await wp.run(() => { CFG.calls = 0; CFG.traffic = 0; UNITS[0].dispatch({ far: { ax: 'ew', at: 50, a: 520, dir: 'E' } }); });
+  await wp.run(() => { CFG.calls = 0; CFG.traffic = 0; CFG.visitors = false; UNITS[0].dispatch({ far: { ax: 'ew', at: 50, a: 520, dir: 'E' } }); });
   const out = await wp.until(() => UNITS[0].state === 'responding' && UNITS[0].pos.z > 47 && UNITS[0].pos.x > -10, 120);
   expect(out.done).toBe(true);
   const r = await wp.run(() => {   // a slow car 50 m ahead in its lane

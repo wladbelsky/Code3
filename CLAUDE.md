@@ -15,6 +15,11 @@ the terminal UI — done. 5. Scenes on site: structure fire, crash, car fire, cr
 (medevac, police) — done. 7. Civilian traffic yielding to lights and sirens — done. 8. Load from the music, persistence, the new panel (a graphite
 dispatch board), the splash and the settings drawer to match — done (see "Panel & persistence"). 9. Polish: performance (vegetation sectors, merged doors, instanced signal lamps), the animated
 preview GIF, screenshots, README — done; left: the Workshop upload (by hand, from WE) and GitHub Pages for the live demo.
+**After stage 9** (approved, in this order): civilian headlights at night — done; drills at the station in quiet hours —
+done; routine vehicles (school bus, garbage truck, delivery van); weather (rain / fog, wet reflections, more crashes);
+2nd-alarm fires with the neighbouring districts' units joining; a police pursuit with Air 1; pedestrians **last, as a
+concept first** (a basic model, screenshots and a performance measurement before building it out). Also: in the browser
+the ⚙ Settings button overlaps the CAD terminal (radio log) — move one of them.
 Original work in the genre: no names, logos, models or assets of existing games or real departments; the town is
 fictional (default FAIRHAVEN).
 
@@ -52,7 +57,7 @@ fictional (default FAIRHAVEN).
 
 ## Rules / conventions
 - **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in
-  `index.html` (WE's CEF caches aggressively). Current: `v=13`.
+  `index.html` (WE's CEF caches aggressively). Current: `v=14`.
 - **New WE property**: add it to `project.json`, read it in `applyUserProperties` (`main.js`) into `CFG`,
   then run `python tools/gen_properties.py`. Property `order` decides the browser-drawer group
   (0–9 camera/time, 10–19 audio/calls, 20–29 terrain & season, 30–39 panel & terminal, 40–49 units, 50–59 town).
@@ -125,6 +130,12 @@ fictional (default FAIRHAVEN).
   At once `1 + floor(LOAD × 2.6)`, one every `lerp(200, 25, LOAD)` s × rand. **`MOVERS`** = units + visitors: everything
   physical (following, giving way, crossings, cars pulling over, the harness's overlaps) iterates `MOVERS`; the CAD, the
   zones and the board iterate `UNITS`.
+- **Drills** (`DRILLS`, `units.js`; state `drill`, tile 'Training'): with the load < 0.2 and calls on, every 3–6 min a
+  free fire / EMS unit with a bay rolls out onto the apron in front of it (`spot`: its tail just clear of the door), works
+  80–140 s — the engine's deck gun straight up (`pump`), the ladder's aerial raised (`aerial`), the rescue / medics washed
+  (a hose and suds, `wash`) with a crew from `CREW` on the west (camera) side — then backs in (a `rev` way) and the door
+  comes down (CAD: `OOS TRAINING` / `IN SVC`). Not free while drilling; a call that needs that type, or the load > 0.3,
+  ends it early (the aerial bedded first). Only while nobody holds the apron.
 - **Light bars**: `flash(on, a)` swaps the segments' materials and the glow points' `userData.on` only on a change; with
   music (`LOAD.level` > 0.15) every beat swaps the sides, otherwise they alternate at ~2.4 Hz.
 
@@ -139,7 +150,7 @@ fictional (default FAIRHAVEN).
   `UPDATE_LINES` while working; after `dwell` the units are released one by one (the chief last); closed once all cleared.
   Police units on a fire / EMS call use the `pd` pools.
 - **Sites**: curbs (`site(kind, ax, at, a, side, name)`); `siteSlots` = curb places 15 m apart on the site's side, then
-  across the street (±8 × 15 m), none within 16 m of a crossing (a crash's wrecks are 11 / 17 m from it) or across a wide entrance (a `drive` wider than 6 m: the ER, the apron, the lot gate, the gas station); each unit takes the first place none of the call's others holds (`freeSlot`); units pull over 8 m after leaving the lane. Far (mutual aid): a
+  across the street (±8 × 15 m), none within 16 m of a crossing (a crash's wrecks are 11 / 17 m from it) or across a wide entrance (a `drive` wider than 6 m: the ER, the apron, the lot gate, the gas station); each unit takes the first place no other unit is headed for or still stands at (`freeSlot`: a closed call's unit may not have pulled away yet); units pull over 8 m after leaving the lane. Far (mutual aid): a
   street's end, the same for all of the call's units.
 - **Radio** (`RADIO.say(who, text, kind, prio)`): 'sys' CAD lines go straight to the log, the rest are queued one at a
   time (gap ~1.6 s + length), stale ones (> 45 s, prio 0) dropped. Every line through `radioLine` (tiers: routine /
@@ -179,7 +190,7 @@ fictional (default FAIRHAVEN).
   middle / back points); merging into one lane, the one nearer the merge goes first. A unit only never drives into a car
   on its path within its stopping distance (`Unit.yieldCap`), waits at a crossing's line while a car is in its box (or
   can no longer stop short of it: `crossCap`), and follows cars ahead in its lane (`gapCap`, not one across its way). A
-  car nose to nose with a unit that waits for it backs off up to 8 m (`jamT`, `behindBy`).
+  car nose to nose with a unit that waits for it backs off up to 14 m (`jamT`, `behindBy`).
 - **Code 3**: a car with a code-3 unit coming within 70 m pulls over to the curb (`lat` +1.2) and stops — unless the
   curb is taken (then it just slows), its nose is in a box (it clears it first) or the unit stops right there (then it
   drives on out of its way); it moves on once the unit's tail is by. The unit passes on the centre line (`latOff`
@@ -195,7 +206,8 @@ fictional (default FAIRHAVEN).
   mid-box for a unit still coming leaves it standing in the way of that unit).
 - **Oncoming**: a unit about to turn into the street toward the passer counts (its way 15 / 30 m on); other units'
   ways are taken where they really drive (out on the centre line while passing: `yieldCap`). A unit waits for a car in
-  its box until half its length is in (braking for it from code 3), for another unit only while its nose is barely in.
+  its box until half its length is in (braking for it from code 3) — not for one that waits for its body (it clears out:
+  else both stand) — and for another unit only while its nose is barely in.
 - **Queues and boxes**: a car standing in a queue short of a box (whoever is ahead stands too) has no claim on it
   (`queued`: one it cannot use holds up the cross traffic, maybe what the one ahead waits for); a unit `held` for its zone
   or a red does not hold a box it is not in. A car jammed with a unit and no room to back (a unit close behind, or 8 m
@@ -203,7 +215,23 @@ fictional (default FAIRHAVEN).
   (`gapCap`), not only one it gives way to, when that unit waits for it (one cutting in to its curb across the lane).
 - **Pulling away** from a curb (`trafficBy`): nobody coming its way within ~4 s behind (`o.v × 4 + 10` m, ≥ 35), in a
   10 m wide band (it is already turned out toward the lane).
+- **Look-ahead by speed**: a unit's `yieldCap` looks at least its stopping distance + 15 m ahead (≤ 80), `crossCap`
+  finds the next box within its stopping distance + 12 m (≥ 45): at code 3 speeds 45 m was too short to stop.
+- **Waiting claims little**: a unit stopped waiting for another mover (`wait`, kind 'move') is `held` like one at a red —
+  the cars go by it (a ring of waits through a car otherwise). It drives by a car that stands waiting for it with a
+  centre-to-centre check (`waits`), not the car's front / back circles; a car backs off up to 14 m.
+- **A committed car re-checks** the units while it is still short of the box and can stop (`unitDue`): one come up
+  meanwhile (it crawled, it pulled over) and it lets go of the box. Under 6 m/s a car brakes for a unit's way even past
+  its stopping point (it stops short of the hit anyway); a held unit it already gives way to keeps a 6 m claim.
+- **Tight pairs**: out on the centre line a unit is `LANE_OFF` from the other lane's centre — a wide unit and a wide
+  car coming the other way don't fit side by side, so such a car (one not truly over at the curb, `lat` > 0.6) stops a
+  pass even on a straight (`oncoming`); a car coming the other way in the next lane is passed with 0.3 m less margin
+  (`yieldCap`). A pulled-over car that comes up to a driveway stays where it is while the unit goes by.
+- **Safety net** (`TRAFFIC.tidy`, every 2 s): a unit that has not got 3 m on its way in 25 s while it and a car wait for
+  each other (`yieldTo`, `blocker`, or the box it waits at for that unit: `boxFor`) — or the car has stood 25 s giving way (a ring through other units): the car goes (`TRAFFIC.cleared`). The rules untangle nearly all standoffs; this is for the rare rest.
 - **Obstacles** at the curb (units on scene, wrecks, burnt cars): a car eases left round them, slowly.
+- **Headlight beams** (`BEAMS`): at night a soft oval on the road ahead of every car and unit with its lights on — one
+  additive InstancedMesh, faded with `ENV.lightsOn`, updated in `TRAFFIC.update`.
 - The tests count cars let into a box without committing (`TRAFFIC.intruded`, must be 0) and watch `civStill` (a car
   standing > 100 s) with the stuck detector.
 
