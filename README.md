@@ -61,6 +61,8 @@ lighter still: lower the **FPS limit** in Wallpaper Engine's settings (30 is ple
   pull over to the curb and stop, and the unit passes on the centre line; otherwise they give way to units turning across,
   and back off a little if one has to get by. Property **Civilian traffic** sets how many by day (fewer at night, more
   on a busy night).
+- **Routine traffic**: the school bus in the morning and after school (red lights on at its stops, the traffic waits),
+  the garbage truck going house to house in the morning, a delivery van pulled over with its hazards on.
 - **Neighbouring districts**: a county engine and rescue in lime, a private ambulance service, the sheriff's SUVs pass
   through town with lights and sirens now and then — a steady stream when the town is busy. They are not on the CAD.
   Property **Units from other districts passing through**.

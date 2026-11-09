@@ -57,7 +57,7 @@ fictional (default FAIRHAVEN).
 
 ## Rules / conventions
 - **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in
-  `index.html` (WE's CEF caches aggressively). Current: `v=14`.
+  `index.html` (WE's CEF caches aggressively). Current: `v=15`.
 - **New WE property**: add it to `project.json`, read it in `applyUserProperties` (`main.js`) into `CFG`,
   then run `python tools/gen_properties.py`. Property `order` decides the browser-drawer group
   (0–9 camera/time, 10–19 audio/calls, 20–29 terrain & season, 30–39 panel & terminal, 40–49 units, 50–59 town).
@@ -226,10 +226,26 @@ fictional (default FAIRHAVEN).
 - **Tight pairs**: out on the centre line a unit is `LANE_OFF` from the other lane's centre — a wide unit and a wide
   car coming the other way don't fit side by side, so such a car (one not truly over at the curb, `lat` > 0.6) stops a
   pass even on a straight (`oncoming`); a car coming the other way in the next lane is passed with 0.3 m less margin
-  (`yieldCap`). A pulled-over car that comes up to a driveway stays where it is while the unit goes by.
+  (`yieldCap`; arrivals within 1.2 s of each other: one fixed order, code 3 then the roster — each one's own estimate
+  would flip). A pulled-over car that comes up to a driveway stays where it is while the unit goes by.
+- **Bodies count**: a unit that another gives way to still stops for its body where it stands (pulling out across
+  the street); its own way is checked where it will really drive (`wayAt`: out on the centre line while passing); it
+  does not go out to pass with another unit standing or crossing on the centre line ahead (`centreBlocked`). A car moves
+  back toward the lane only while rolling (standing it would edge into whoever is beside it). A routine vehicle backs
+  out of a stop only with nobody coming up behind (`comingBy`) and skips a stop where something stands at the curb.
+- **Rings and bodies**: the one that leads a ring of waits (`leads`) — like one another gives way to — ignores the
+  other's way, not its body (`bodyBlocked`); one whose way another's body blocks cannot lead. Standing 6 s (`stillSince`), it takes the slow units within 20 m by their bodies alone,
+  centre to centre (as they really fit — no to and fro over who is first). A car closer than its margin behind whoever is
+  ahead stands (no creeping on at their pace).
 - **Safety net** (`TRAFFIC.tidy`, every 2 s): a unit that has not got 3 m on its way in 25 s while it and a car wait for
-  each other (`yieldTo`, `blocker`, or the box it waits at for that unit: `boxFor`) — or the car has stood 25 s giving way (a ring through other units): the car goes (`TRAFFIC.cleared`). The rules untangle nearly all standoffs; this is for the rare rest.
+  each other (`yieldTo`, `blocker`, or the box it waits at for that unit: `boxFor`) — or the car has stood 25 s giving way (a ring through other units): the car goes (`TRAFFIC.cleared`). Two units waiting for each other 20 s: the first in the roster takes the other for 6 s by its centre alone (`ghost`, `TRAFFIC.unstuck`: its way ignored, never its centre). The rules untangle nearly all standoffs; this is for the rare rest.
 - **Obstacles** at the curb (units on scene, wrecks, burnt cars): a car eases left round them, slowly.
+- **Routine vehicles** (`ROUTINE`; `Civ` with a `kind`: their own models `busModel` / `garbageModel` / `deliveryModel`,
+  warning lights as `bars`): one of each in the pool, set out by the hour (the bus 7–8:45 and 14:30–16:30, the garbage
+  truck 6:30–12, the van 8:30–18:30), across town (`throughWay`) with stops on the way (`spawnRoutine`: along a street, in
+  town, clear of the boxes, `spacing` apart). At a stop it stands (`atStop`, `dwell`) with its lights on — the bus and the
+  truck in the lane (the traffic waits behind them), the van over at the curb (`aside`: cars ease round it, units pass
+  it). `trafficWanted` counts only the cars; none with `CFG.traffic` 0.
 - **Headlight beams** (`BEAMS`): at night a soft oval on the road ahead of every car and unit with its lights on — one
   additive InstancedMesh, faded with `ENV.lightsOn`, updated in `TRAFFIC.update`.
 - The tests count cars let into a box without committing (`TRAFFIC.intruded`, must be 0) and watch `civStill` (a car

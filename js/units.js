@@ -31,6 +31,7 @@ let UNITS = [], MOVERS = [];   // MOVERS: the units and the visitors — everyon
 const ZONES = { apron: null, yard: null, lot: null };
 const _ua = { x: 0, z: 0, h: 0, v: 0 }, _ub = { x: 0, z: 0, h: 0, v: 0 }, _uc = { x: 0, z: 0, h: 0, v: 0 };
 const YIELD_PTS = [], _av = new V3();
+const hkOf = u => clamp(Math.max(u.v * 3, u.v * u.v / 8 + 15), 26, 80);   // (a unit's look-ahead: ~3 s, at least its stopping distance)
 const avenueX = () => CITY_LAYOUT.avenues.find(a => a.x > 0 && a.x < 100).x;   // 2nd Ave: the police lot's gate
 
 class Unit {
@@ -228,7 +229,7 @@ class Unit {
     const straight = Math.abs(angleWrap(w.at(Math.min(w.len, w.s + 25), _ub).h - p.h)) < 0.2;   // (a turn within 25 m: slowly, and back in first if a car is coming the other way)
     const abreast = out && this.civAhead(this.len / 2 + 3 + this.v * this.v / 8);   // (alongside a car pulled over or too close to stop behind it: out until it is by, whatever comes the other way in its lane — not one out on the centre line too)
     const pass = this.passing = this.lights && (this.state === 'responding' || this.state === 'transporting') && !w.rev && alongStreet(p.x, p.z, p.h) &&
-      (abreast ? !this.oncoming(0, true) : !this.oncoming(straight ? 0 : 40) && ((rem > 40 && this.civAhead(60)) || (out && (rem > 25 ? this.civAhead(60) : this.civAhead(this.len / 2 + 3)))));   // (once out, until it is by; near the end only while one is still alongside)
+      (abreast ? !this.oncoming(0, true) : !this.oncoming(straight ? 0 : 40) && !this.centreBlocked() && ((rem > 40 && this.civAhead(60)) || (out && (rem > 25 ? this.civAhead(60) : this.civAhead(this.len / 2 + 3)))));   // (once out, until it is by; near the end only while one is still alongside)
     const ls = (this.v > 0.3 ? clamp(this.v * 0.4, 0.5, 2) : 0) * dt;   // (sideways only while rolling)
     this.latOff = (this.latOff || 0) + clamp((pass ? -LANE_OFF : 0) - (this.latOff || 0), -ls, ls);
     if (out && rem < 20) { const c = Math.max(1.5, Math.sqrt(6 * Math.max(0, rem - 10))); if (c < vt) vt = c; }   // (a crawl back in, not to the curb from the centre line)
@@ -279,6 +280,14 @@ class Unit {
       return false; };
     return MOVERS.some(o => o.way && o !== this && o.model.group.visible && (near(o, 60 + (o.v + this.v) * 3) || turning(o))) || CIVS.some(o => o.on && !(o.pulled && o.lat > 0.6) && near(o, (this.wid + o.wid) / 2 + 0.05 > LANE_OFF ? Math.max(cars, 50) : cars));   // (cars only when asked — and a wide one even on a straight: out on the centre line it would brush it)
   }
+  /* another unit standing (or crossing) on the centre line ahead within its stopping distance — one pulling out across
+     the street: no going out there */
+  centreBlocked() {
+    const c = Math.cos(this.pos.h), s = Math.sin(this.pos.h), lo = this.latOff || 0, reach = this.v * this.v / 8 + 20;
+    return MOVERS.some(o => { if (o === this || !o.model.group.visible || o.state === 'quarters' || Math.cos(o.pos.h - this.pos.h) > 0.9) return false;
+      const dx = o.pos.x - this.pos.x, dz = o.pos.z - this.pos.z, along = dx * c + dz * s, lat = -dx * s + dz * c + lo;   // (from its lane: the centre line at −LANE_OFF)
+      return along > 0 && along < reach && lat > -LANE_OFF - (this.wid + o.wid) / 2 - 0.5 && lat < 0.5; });
+  }
   /* someone driving by close behind or alongside (either lane) */
   trafficBy() {
     const c = Math.cos(this.pos.h), s = Math.sin(this.pos.h);
@@ -295,7 +304,7 @@ class Unit {
     for (let n = 0; u && n < 10 && u !== this; n++) { ring.push(u); u = u.wait; }
     if (u !== this || !ring.includes(o)) return false;
     const movers = ring.filter(r => r.waitKind === 'move'); if (!movers.length) return false;
-    movers.sort((a, b) => ((a.state === 'responding' ? 0 : 1) - (b.state === 'responding' ? 0 : 1)) || a.i - b.i);
+    movers.sort((a, b) => ((a.bodyBlocked ? 1 : 0) - (b.bodyBlocked ? 1 : 0)) || ((a.state === 'responding' ? 0 : 1) - (b.state === 'responding' ? 0 : 1)) || a.i - b.i);   // (not one whose way another's body blocks)
     return movers[0] === this;
   }
   /* car following: slow down to stop short of a unit ahead in the lane, allowing for its own braking; two holding each
@@ -325,22 +334,36 @@ class Unit {
   /* paths that cross (out of a bay across the lanes, turning at a crossing, into the lane): whoever gets to the meeting
      point later stops short of it; a tie goes to the run (code 3), then to the lower roster number; never to one that
      is already giving way to this unit */
+  /* its way k m on, where it will really drive (out on the centre line while passing) — into _ub */
+  wayAt(w, k) { const p = w.at(w.s + k, _ub), lo = k > 8 && this.passing ? -LANE_OFF : (this.latOff || 0); if (lo) { p.x -= Math.sin(p.h) * lo; p.z += Math.cos(p.h) * lo; } return p; }
   yieldCap(w) {
-    let cap = Infinity; this.yieldTo = null;
+    let cap = Infinity; this.yieldTo = null; this.bodyBlocked = false;
+    if (this.v > 0.3 || this.stillSince == null) this.stillSince = T;
+    const tight = T - this.stillSince > 6;   // (standing 6 s, each in the other's way by the circles: by them centre to centre, as they really fit)
     for (const o of MOVERS) {
-      if (o === this || !o.model.group.visible || o.state === 'quarters' || (o.state === 'on_scene' && !o.way) || o.yieldTo === this || this.leads(o)) continue;
+      if (o === this || !o.model.group.visible || o.state === 'quarters' || (o.state === 'on_scene' && !o.way) ) continue;
       if (Math.abs(o.pos.x - this.pos.x) + Math.abs(o.pos.z - this.pos.z) > 110) continue;
       const R = (this.wid + o.wid) / 2 + 0.6, ow = o.way, pts = YIELD_PTS; pts.length = 0;
+      const ghost = this.ghost === o && this.ghostUntil > T;   // (the safety net's: its way ignored, its centre not)
+      if (o.yieldTo === this || this.leads(o) || ghost || (tight && o.v < 1 && Math.hypot(o.pos.x - this.pos.x, o.pos.z - this.pos.z) < 20)) {   // (standing a while next to it: only where it is counts — no to and fro over who is first)   // it gives way to this one (or this one leads their ring): its way is free — not its body, where it stands (across the lane, pulling out)
+        const e = o.len / 2 - o.wid / 2, ec = Math.cos(o.yaw) * e, es = Math.sin(o.yaw) * e, Rb = (this.wid + o.wid) / 2 + 0.05;
+        for (let k = 2; k <= hkOf(this) && w.s + k <= w.len; k += 1.5) {
+          const p = this.wayAt(w, k);
+          if (tight || ghost ? Math.hypot(p.x - o.pos.x, p.z - o.pos.z) < Rb + 0.1 : Math.hypot(p.x - o.pos.x - ec, p.z - o.pos.z - es) < Rb || Math.hypot(p.x - o.pos.x, p.z - o.pos.z) < Rb || Math.hypot(p.x - o.pos.x + ec, p.z - o.pos.z + es) < Rb) {
+            const c = Math.sqrt(7 * Math.max(0, k - this.len / 2 - Rb)); if (c < cap) { cap = c; this.yieldTo = o; } this.bodyBlocked = true; break; }
+        }
+        continue;
+      }
       pts.push(o.pos.x, o.pos.z, 0);
-      const hj = clamp(o.v * 3, 12, 45), hk = clamp(Math.max(this.v * 3, this.v * this.v / 8 + 15), 26, 80);   // ~3 s ahead for both; its own at least its stopping distance
+      const hj = clamp(o.v * 3, 12, 45), hk = hkOf(this);   // ~3 s ahead for both; its own at least its stopping distance
       const olo = o.passing ? -LANE_OFF : (o.latOff || 0);   // (where it really drives: out on the centre line while passing)
       if (ow) for (let j = 2; j <= hj && ow.s + j <= ow.len; j += 2) { const q = ow.at(ow.s + j, _ub); pts.push(q.x - Math.sin(q.h) * olo, q.z + Math.cos(q.h) * olo, j); }
       for (let k = 2; k <= hk && w.s + k <= w.len; k += 1.5) {
-        const p = w.at(w.s + k, _ub);
+        const p = this.wayAt(w, k);
         for (let i = 0; i < pts.length; i += 3) {
           if (Math.hypot(p.x - pts[i], p.z - pts[i + 1]) > R) continue;
           const t1 = k / Math.max(this.v, 2), t2 = pts[i + 2] / Math.max(o.v, 2);
-          const first = t2 < t1 - 0.3 || (Math.abs(t1 - t2) <= 0.3 && ((o.state === 'responding') !== (this.state === 'responding') ? o.state === 'responding' : o.i < this.i));
+          const first = t2 < t1 - 1.2 || (Math.abs(t1 - t2) <= 1.2 && ((o.state === 'responding') !== (this.state === 'responding') ? o.state === 'responding' : o.i < this.i));   // (close: one fixed order — each one's own estimate would flip)
           if (first) { const c = Math.sqrt(7 * Math.max(0, k - this.len / 2 - R)); if (c < cap) { cap = c; this.yieldTo = o; } }
           k = 99; break;   // (the first meeting point decides)
         }

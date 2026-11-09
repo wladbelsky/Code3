@@ -77,3 +77,28 @@ test('units of the neighbouring districts pass through with lights, off the boar
   expect(off).toEqual({ v: [], more: 0, out: 0 });
   expect(await wp.stuck()).toEqual([]);
 });
+
+test('routine vehicles: the bus, the garbage truck and the van cross town with their stops (lights on there) and leave', async ({ wp }) => {
+  test.setTimeout(4 * 60 * 1000);
+  await wp.boot();
+  const r = await wp.run(() => {
+    CFG.calls = 0; const out = {};
+    for (const k of ['bus', 'garbage', 'delivery']) {
+      const c = CIVS.find(c => c.kind === k); if (c.on) c.despawn(); let ok = false; for (let n = 0; n < 30 && !ok; n++) ok = c.spawnRoutine();   // (one may be out on its own: the van at noon)
+      const stops = c.stops ? c.stops.length : 0; let stood = 0, lit = 0, t = 0;
+      while (c.on && t < 400) { const x = __t.sim(0.5); if (x.violations.length) return { k, v: x.violations }; t += 0.5; if (c.atStop) { stood += 0.5; if (c.bars.some(b => b.mesh.material === LB_MATS[b.col][1])) lit++; } }
+      out[k] = { ok, stops, stood, lit: lit > 0, gone: !c.on };
+    }
+    return out;
+  });
+  expect(r.v).toBeUndefined();
+  for (const k of ['bus', 'garbage', 'delivery']) {
+    expect(r[k].ok, k).toBe(true);
+    expect(r[k].stops, k).toBeGreaterThan(0);
+    if (k === 'delivery' && r[k].stood === 0) continue;   // (the van may find something at the curb at each of its few stops: it skips them)
+    expect(r[k].stood, `${k} stood at its stops`).toBeGreaterThan(4);
+    expect(r[k].lit, `${k}: lights at a stop`).toBe(true);
+  }
+  for (const k of ['bus', 'garbage', 'delivery']) expect(r[k].gone, `${k} left town`).toBe(true);
+  expect(await wp.stuck()).toEqual([]);
+});

@@ -174,4 +174,45 @@ function patrolModel(liv) {
   lightBar(g, bars, 0, y + S.body + S.cab[1] + 0.06, 1.5, LV.bar);
   return { group: g, bars, len: S.L, wid: S.W };
 }
+/* ===== Routine vehicles (traffic.js ROUTINE): the school bus, the garbage truck, the delivery van — { group, bars, len, wid };
+   bars are their warning lights (the bus's red flashers, the truck's amber beacon, the van's hazards) ===== */
+function busModel() {
+  const g = new THREE.Group(), bars = [], L = 11.2, W = 2.5, fx = L / 2, Y = 0xf2b51c;
+  box(g, 1.7, 1.0, W - 0.3, Y, fx - 0.85, 1.25, 0);                              // hood
+  box(g, L - 1.7, 2.35, W, Y, -0.85, 0.75 + 1.17, 0);                            // body
+  box(g, 0.06, 0.9, W - 0.4, CAB_GLASS, fx - 1.72, 2.3, 0);                      // windscreen
+  for (const sd of [-1, 1]) {
+    for (let x = fx - 2.6; x > -L / 2 + 0.6; x -= 1.05) box(g, 0.8, 0.62, 0.04, CAB_GLASS, x, 2.35, sd * (W / 2 + 0.01));
+    for (const y of [1.45, 1.75]) box(g, L - 1.8, 0.07, 0.03, 0x1a1a1a, -0.85, y, sd * (W / 2 + 0.02));   // rub rails
+    box(g, 0.06, 0.26, 0.4, HEADLAMP, fx + 0.01, 1.2, sd * (W / 2 - 0.5));
+    flasher(g, bars, fx - 1.7, 2.95, sd * (W / 2 - 0.3), 'r', sd < 0 ? 0 : 1, 0.12, 0.2, 0.26);   // the red flashers, front and back
+    flasher(g, bars, -L / 2 - 0.02, 2.95, sd * (W / 2 - 0.3), 'r', sd < 0 ? 1 : 0, 0.12, 0.2, 0.26);
+  }
+  box(g, 0.2, 0.3, W, 0x1a1a1a, fx + 0.05, 0.7, 0);
+  box(g, L - 1.8, 0.1, W - 0.1, 0xf6f2e8, -0.85, 3.15, 0);                       // roof
+  wheels(g, [fx - 1.1, -L / 2 + 2.6], [W / 2 - 0.25, -W / 2 + 0.25], 0.5, 0.34);
+  return { group: g, bars, len: L, wid: W };
+}
+function garbageModel() {
+  const g = new THREE.Group(), bars = [], L = 9.2, W = 2.5, fx = L / 2, G = 0x2f6b3a;
+  box(g, 2.0, 2.0, W, 0xeeeeea, fx - 1.0, 1.75, 0);                              // cab
+  box(g, 0.06, 0.8, W - 0.4, CAB_GLASS, fx + 0.01, 2.15, 0);
+  box(g, 0.2, 0.35, W, CHROME, fx + 0.05, 0.75, 0);
+  for (const sd of [-1, 1]) box(g, 0.06, 0.26, 0.42, HEADLAMP, fx + 0.02, 1.15, sd * (W / 2 - 0.45));
+  box(g, 5.4, 2.6, W, G, fx - 2.0 - 2.7, 0.85 + 1.3, 0);                         // body
+  taper(g, 1.8, 2.4, W, 0x24522c, -L / 2 + 0.9, 0.85 + 1.2, 0, 1, 1, 0.35);      // hopper
+  box(g, 0.08, 1.2, W - 0.5, 0x1a1a1a, -L / 2 + 0.02, 1.4, 0);
+  for (const sd of [-1, 1]) flasher(g, bars, fx - 1.0, 2.85, sd * 0.35, 'a', sd < 0 ? 0 : 1, 0.3, 0.2, 0.3);   // the beacon
+  wheels(g, [fx - 1.1, -1.9, -3.1], [W / 2 - 0.25, -W / 2 + 0.25], 0.5, 0.34);
+  return { group: g, bars, len: L, wid: W };
+}
+function deliveryModel() {
+  const S = CAR_SPECS.van, g = carModel('van', 0x6a4a2c), bars = [], y = S.r * 0.9, hy = y + S.body * 0.62;
+  for (const sd of [-1, 1]) {
+    box(g, 3.0, 0.5, 0.03, 0xe6d6a8, -0.5, y + S.body + 0.45, sd * (S.W / 2 + 0.015));   // the company's stripe
+    flasher(g, bars, S.L / 2 + 0.02, hy, sd * (S.W / 2 - 0.12), 'a', 0, 0.06, 0.14, 0.16);   // hazards (together)
+    flasher(g, bars, -S.L / 2 - 0.02, hy + 0.05, sd * (S.W / 2 - 0.12), 'a', 0, 0.06, 0.14, 0.16);
+  }
+  return { group: g, bars, len: S.L, wid: S.W };
+}
 const UNIT_MODELS = { engine: engineModel, ladder: ladderModel, rescue: rescueModel, medic: medicModel, chief: chiefModel, patrol: patrolModel };

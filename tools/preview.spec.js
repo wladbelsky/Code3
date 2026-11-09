@@ -38,7 +38,7 @@ const SCENES = {
       const u = UNITS[0]; let c = window.__pc;
       if (!c && u.state === 'responding' && u.pos.z > 47 && u.pos.x > -10) {
         for (const o of CIVS) if (o.on && Math.abs(o.pos.z - 50) < 8 && o.pos.x > u.pos.x - 5 && o.pos.x < u.pos.x + 160) o.despawn();   // (the stretch clear: no one in the way of the pass)
-        c = window.__pc = CIVS.find(c => !c.on); c.start(ROADS.way({ ax: 'ew', at: 50, a: u.pos.x + 45, dirs: ['E'] }, { ax: 'ew', at: 50, a: 480, dir: 'E' }, null, null, { vmax: 7, alat: 2.2, vEnd: 7 }));
+        c = window.__pc = CIVS.find(c => !c.on && c.kind === 'car'); c.start(ROADS.way({ ax: 'ew', at: 50, a: u.pos.x + 45, dirs: ['E'] }, { ax: 'ew', at: 50, a: 480, dir: 'E' }, null, null, { vmax: 7, alat: 2.2, vEnd: 7 }));
       }
       CAM_TGT.set(u.pos.x + 6, 0, u.pos.z); updateCamera();
       return c && u.latOff < -2 && c.pulled && Math.abs(c.pos.x - u.pos.x) < 6;

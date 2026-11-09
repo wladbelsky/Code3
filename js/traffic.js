@@ -41,15 +41,21 @@ function wayBoxes(w) {
 }
 
 class Civ {
-  constructor(i) {
-    this.i = i; const g = randomCar(); this.len = g.userData.len; this.wid = g.userData.wid;
-    const L2 = this.len / 2, W2 = this.wid / 2 - 0.25;
-    this.heads = navLights(g, [[L2 + 0.1, 0.75, W2, 0xfff2d8], [L2 + 0.1, 0.75, -W2, 0xfff2d8], [-L2 - 0.1, 0.85, W2, 0xff2010], [-L2 - 0.1, 0.85, -W2, 0xff2010]], null, 0.75).material;
-    mergeStatic(g, []);
+  constructor(i, kind) {
+    this.i = i; this.kind = kind || 'car'; this.spec = null; this.bars = [];
+    let g;
+    if (kind) { const m = ROUTINE[kind].model(); g = m.group; this.bars = m.bars; this.len = m.len; this.wid = m.wid; }
+    else { g = randomCar(); this.len = g.userData.len; this.wid = g.userData.wid; }
+    const L2 = this.len / 2, W2 = this.wid / 2 - 0.25, hy = kind ? 1.1 : 0.75;
+    this.heads = navLights(g, [[L2 + 0.1, hy, W2, 0xfff2d8], [L2 + 0.1, hy, -W2, 0xfff2d8], [-L2 - 0.1, hy + 0.1, W2, 0xff2010], [-L2 - 0.1, hy + 0.1, -W2, 0xff2010]], null, 0.75).material;
+    mergeStatic(g, this.bars.map(b => b.mesh));
     g.visible = false; scene.add(g); this.model = { group: g };
     this.on = false; this.pos = { x: 0, z: 0, h: 0 }; this.v = 0; this.lat = 0; this.way = null; this.yaw = 0;
-    this.yieldTo = null; this.boxIn = null; this.stopAt = null; this.stopT = 0; this.pulled = false;
+    this.yieldTo = null; this.boxIn = null; this.stopAt = null; this.stopT = 0; this.pulled = false; this.stops = null; this.dwellT = 0; this.atStop = false;
+    this.flash(false);
   }
+  /* its warning lights (a routine vehicle's): on at a stop, the two sides alternating (the van's hazards together) */
+  flash(on) { const a = ((T * 2.2) % 1) < 0.5 ? 0 : 1, k = on ? a : -1; if (k === this.lastFlash) return; this.lastFlash = k; for (const b of this.bars) b.mesh.material = LB_MATS[b.col][on && b.ph === a ? 1 : 0]; }
   get moving() { return this.on; }
   get state() { return this.on ? 'driving' : 'parked'; }
   /* a start off the screen on a street, heading into town, and an end off the screen on another */
@@ -60,13 +66,39 @@ class Civ {
     if ([...MOVERS, ...CIVS].some(o => o !== this && o.model.group.visible && Math.hypot(o.pos.x - p.x, o.pos.z - p.z) < 30)) return false;
     this.start(w); return true;
   }
+  /* someone coming up behind in its lane or by it (~4 s), or right alongside */
+  comingBy() {
+    const c = Math.cos(this.pos.h), s = Math.sin(this.pos.h);
+    return [...MOVERS, ...CIVS].some(o => { if (o === this || !o.model.group.visible) return false;
+      const dx = o.pos.x - this.pos.x, dz = o.pos.z - this.pos.z, along = dx * c + dz * s, lat = Math.abs(-dx * s + dz * c);
+      return lat < 4 && Math.cos(o.pos.h - this.pos.h) > 0.5 && along < this.len / 2 + o.len / 2 + 1 && along > -Math.max(25, o.v * 4 + 8) && (o.v > 0.5 || along > -this.len); });
+  }
+  /* a routine vehicle: a way across town and its stops on it (along a street, in town, clear of the crossings and of
+     each other by the kind's spacing) */
+  spawnRoutine() {
+    if (this.on) return false;
+    const R = ROUTINE[this.kind], w = throughWay({ vmax: R.vmax, alat: 2, vEnd: 8 }); if (!w) return false;
+    const p0 = w.at(0, _tw);
+    if ([...MOVERS, ...CIVS].some(o => o !== this && o.model.group.visible && Math.hypot(o.pos.x - p0.x, o.pos.z - p0.z) < 30)) return false;
+    const boxes = wayBoxes(w), stops = [];
+    for (let s = 30; s < w.len - 30; s += 2) {
+      const q = w.at(s, _tw);
+      if (!inTown(q) || !alongStreet(q.x, q.z, q.h) || boxes.some(b => s > b.s0 - 18 - this.len / 2 && s < b.s1 + 14 + this.len / 2)) continue;
+      if (R.aside) { const rx = q.x - Math.sin(q.h) * 3.5, rz = q.z + Math.cos(q.h) * 3.5; if (CITY.drives.some(r => rx > r[0] - 6 && rx < r[2] + 6 && rz > r[1] - 6 && rz < r[3] + 6)) continue; }   // (not across a driveway: it pulls over there)
+      if (!stops.length || s - stops[stops.length - 1] >= R.spacing) stops.push(s);
+    }
+    if (stops.length < R.min) return false;
+    this.start(w); this.stops = stops.slice(0, R.max); this.dwellT = 0; this.dwellNow = rand(...R.dwell);
+    return true;
+  }
   start(w) {
+    this.leaveBox();   // (a claim from before must not stay behind in CIV_BOXES)
     const p = w.at(0, _tw);
     w.boxes = wayBoxes(w); this.way = w; this.bi = 0; this.on = true; this.v = p.v * 0.8; this.lat = 0; this.yaw = p.h; this.pulled = false;
     this.boxIn = null; this.stopAt = null; this.stillT = 0; this.pushed = -9; this.backed = 0;
     this.model.group.visible = true; this.place(p.x, p.z, p.h, 0); TRAFFIC.spawned++;
   }
-  despawn() { this.leaveBox(); this.on = false; this.way = null; this.model.group.visible = false; this.v = 0; }
+  despawn() { this.leaveBox(); this.on = false; this.way = null; this.model.group.visible = false; this.v = 0; this.stops = null; this.atStop = false; this.flash(false); }
   leaveBox() { if (this.boxIn) { const s = CIV_BOXES.get(this.boxIn.key); if (s) s.delete(this); this.boxIn = null; } }
   /* the code-3 unit coming up on it, if any (lights on, moving, within 70 m behind / toward it, near its line, going on past) */
   siren() {
@@ -90,6 +122,7 @@ class Civ {
     };
     for (const u of UNITS) if (u.state === 'on_scene' && !u.way && u.model.group.visible) test(u.pos.x, u.pos.z, u.wid / 2);
     for (const p of PROPS.cars) if (p.used) test(p.g.position.x, p.g.position.z, 2.4);
+    for (const o of CIVS) if (o !== this && o.atStop && ROUTINE[o.kind].aside) test(o.pos.x, o.pos.z, o.wid / 2);
     for (const p of PROPS.burnt) if (p.used) test(p.g.position.x, p.g.position.z, 1.1);
     // a driveway or a gate at its right (the curb it would pull over onto): not there
     const rx = this.pos.x - s * 3.5, rz = this.pos.z + c * 3.5;
@@ -107,12 +140,13 @@ class Civ {
   gapCap() {
     const c = Math.cos(this.pos.h), s = Math.sin(this.pos.h); let cap = Infinity; this.blocker = null;
     for (const L of [MOVERS, CIVS]) for (const o of L) {
+      if (L === CIVS && o.atStop && ROUTINE[o.kind].aside && o.lat > 0.9) continue;   // (a van stopped aside: eased round, not queued behind)
       if (o === this || !o.model.group.visible || (L === MOVERS && (o.state === 'quarters' || (o.state === 'on_scene' && !o.way)))) continue;
       const dx = o.pos.x - this.pos.x, dz = o.pos.z - this.pos.z, along = dx * c + dz * s, lat = Math.abs(-dx * s + dz * c);
       const dh = Math.abs(angleWrap(o.pos.h - this.pos.h));   // (one pulling out into the lane at an angle counts as in it)
       if (along <= 0 || along > 50 || lat > (this.wid + o.wid) / 2 + 0.1 + (dh > 0.15 && o.v > 0.3 ? 1.5 : 0) || dh > 1.6) continue;   // (not oncoming: crossing paths are the boxes' and the units' business)
       const gap = along - (this.len + o.len) / 2 - 2.5, ov = o.v * Math.cos(o.pos.h - this.pos.h);
-      const k = ov >= 0 ? Math.sqrt(7 * (Math.max(0, gap) + ov * ov / 10)) : Math.max(0, Math.sqrt(7 * Math.max(0, gap)) + ov);
+      const k = gap < -1 ? 0 : ov >= 0 ? Math.sqrt(7 * (Math.max(0, gap) + ov * ov / 10)) : Math.max(0, Math.sqrt(7 * Math.max(0, gap)) + ov);   // (closer than the margin already: stand — not creep on at its pace)
       if (k < cap) { cap = k; this.blocker = o; }
     }
     return cap;
@@ -188,6 +222,16 @@ class Civ {
     const w = this.way, p = w.at(w.s, _tw), ob = this.obstacles(_tob);
     let vt = p.v, latT = -ob.shift;
     if (ob.shift > 0) vt = Math.min(vt, 6);
+    this.atStop = false;
+    if (this.stops && this.stops.length) {   // a routine vehicle's stop: in to it, stand there (toward the curb), on again
+      const R = ROUTINE[this.kind], d = this.stops[0] - w.s;
+      if (d < -2 || (d < 20 && d > 0.6 && (ob.shift > 0 || ob.curb && R.aside))) { this.stops.shift(); this.dwellT = 0; }   // (passed it — or something stands at the curb there: not this one)
+      else {
+        vt = Math.min(vt, Math.sqrt(2 * 2.2 * Math.max(0, d)) + (d < 0.5 ? 0 : 0.6)); if (d < 25) latT = Math.max(latT, R.lat * clamp(1 - d / 25, 0, 1));
+        if (d < 0.6 && this.v < 0.3) { this.atStop = true; vt = 0; latT = R.lat; if ((this.dwellT += dt) > this.dwellNow && !(R.aside && this.comingBy())) { this.stops.shift(); this.dwellT = 0; this.dwellNow = rand(...R.dwell); } }   // (back out into the lane only with nobody coming up behind)
+      }
+    }
+    if (this.bars.length) this.flash(this.atStop || (this.kind === 'garbage' && this.stops && this.stops.length > 0 && inTown(this.pos)));
     // a code-3 unit coming: pull over and stop (or, with the curb taken, slow down) until it is by; not inside a box
     const u = this.siren();
     this.pulled = !!u && !(this.boxIn && w.s + this.len / 2 > this.boxIn.s0);   // (its nose in the box: it clears it first) if (this.pulled) TRAFFIC.pulls++;
@@ -196,7 +240,7 @@ class Civ {
     this.why = vt < 0.5 && this.pulled ? 'pull' : g < 0.5 ? 'gap' : bx < 0.5 ? 'box' : y < 0.5 ? 'yield' : '';
     vt = Math.min(vt, g, bx, y);
     this.v = this.v < vt ? Math.min(vt, this.v + 2.2 * dt) : Math.max(vt, this.v - (this.pulled ? 4.5 : 5) * dt);
-    this.lat += clamp(latT - this.lat, -1.2 * dt, 1.2 * dt);
+    this.lat += clamp(latT - this.lat, this.v > 0.5 ? -1.2 * dt : 0, 1.2 * dt);   // (back out toward the lane only while rolling: standing, it would edge into whoever is beside it)
     this.stillT = this.v < 0.1 ? this.stillT + dt : 0;
     // nose to nose with a unit that waits for it (it turned across in front of the car): back off (up to 8 m) to let it by
     const jw = this.yieldTo || (this.blocker && this.blocker.spec ? this.blocker : null);   // (or a unit it follows that waits for it: one cutting in to its curb across the lane)
@@ -225,19 +269,34 @@ class Civ {
 const _tvp = new V3();
 
 /* how many cars by the hour: a quiet night, a morning and an evening rush */
+/* the routine vehicles: their hours, how often one sets out, its stops (spacing, how many, how long, how far toward the
+   curb) — the bus and the garbage truck stop in the lane (the traffic waits), the van pulls aside (the traffic eases round) */
+const ROUTINE = {
+  bus: { model: busModel, hours: [[7, 8.75], [14.5, 16.5]], every: [150, 300], vmax: 10, spacing: 110, min: 2, max: 3, dwell: [10, 15], lat: 0.5 },
+  garbage: { model: garbageModel, hours: [[6.5, 12]], every: [240, 420], vmax: 8, spacing: 32, min: 4, max: 9, dwell: [5, 8], lat: 0.4 },
+  delivery: { model: deliveryModel, hours: [[8.5, 18.5]], every: [120, 260], vmax: 11, spacing: 90, min: 1, max: 2, dwell: [18, 30], lat: 1.2, aside: true }
+};
+const inTown = p => Math.abs(p.x) < CITY_LAYOUT.inner - 12 && Math.abs(p.z) < CITY_LAYOUT.inner - 12;
 function trafficWanted() {
   const d = getNow(), h = d.getHours() + d.getMinutes() / 60;
   const k = h < 5 ? 0.25 : h < 6.5 ? lerp(0.25, 1, (h - 5) / 1.5) : h < 21 ? 1 : h < 24 ? lerp(1, 0.35, (h - 21) / 3) : 0.25;
   return Math.min(CIV_MAX, Math.round(clamp(CFG.traffic, 0, CIV_MAX) * k * (1 + LOAD.level * 0.35)));   // (a busy night: more about)
 }
 const TRAFFIC = {
-  spawnT: 3, spawned: 0, intruded: 0, pulls: 0, cleared: 0,
+  spawnT: 3, spawned: 0, intruded: 0, pulls: 0, cleared: 0, unstuck: 0,
   update(dt) {
     for (const c of CIVS) c.update(dt);
     BEAMS.update();
+    if (CFG.traffic > 0) for (const k in ROUTINE) {   // the routine vehicles: in their hours, one at a time each
+      const R = ROUTINE[k], c = CIVS.find(c => c.kind === k);
+      if (!c || c.on || (R.t = (R.t ?? rand(20, 60)) - dt) > 0) continue;
+      R.t = rand(...R.every);
+      const h = getNow().getHours() + getNow().getMinutes() / 60;
+      if (R.hours.some(([a, b]) => h >= a && h < b)) for (let n = 0; n < 4 && !c.spawnRoutine(); n++);
+    }
     this.spawnT -= dt;
     if (this.spawnT <= 0) {
-      const on = CIVS.filter(c => c.on).length, c = CIVS.find(c => !c.on), want = trafficWanted();
+      const on = CIVS.filter(c => c.on && c.kind === 'car').length, c = CIVS.find(c => !c.on && c.kind === 'car'), want = trafficWanted();
       this.spawnT = on < want - 3 ? rand(0.5, 1.2) : rand(1.5, 3.5);   // (well short of it: catch up quicker)
       if (c && on < want) for (let n = 0; n < 4 && !c.spawn(); n++);   // (an end too close to another car: try another)
     }
@@ -253,10 +312,13 @@ const TRAFFIC = {
       if (!u.prog || u.prog.w !== w || w.s - u.prog.s > 3) { u.prog = { w, s: w.s, t: T }; continue; }
       const c = u.wait; if (T - u.prog.t > 25 && c instanceof Civ && c.on && (c.yieldTo === u || c.blocker === u || c.boxFor === u || (c.stillT > 25 && c.why === 'yield'))) {   // (or a ring through other units: it has stood 25 s giving way)   // (each waiting for the other: not a queue at a red light)
         c.despawn(); this.cleared++; u.prog.t = T; }
+      // two units each waiting for the other that long: the first in the roster ignores the other for 6 s (each is in the
+      // other's way only by the body circles; centre to centre they fit — the tests' overlap check holds them to that)
+      const o = u.wait; if (T - u.prog.t > 20 && o instanceof Unit && o.wait === u && u.i < o.i && !(u.ghostUntil > T)) { u.ghost = o; u.ghostUntil = T + 6; this.unstuck++; u.prog.t = T; }
     }
   }
 };
-function buildTraffic() { CIVS = []; for (let i = 0; i < CIV_MAX; i++) CIVS.push(new Civ(i)); BEAMS.build(); }
+function buildTraffic() { CIVS = []; for (let i = 0; i < CIV_MAX; i++) CIVS.push(new Civ(i)); for (const k in ROUTINE) CIVS.push(new Civ(CIVS.length, k)); BEAMS.build(); }
 
 /* ===== Headlight beams at night: a soft oval of light on the road ahead of every car and unit with its lights on — one
    InstancedMesh (additive, no depth write) for all of them, faded with ENV.lightsOn like the street light pools ===== */
