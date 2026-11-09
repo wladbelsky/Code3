@@ -159,6 +159,18 @@
 				"type": "bool",
 				"value": true
 			},
+			"sky": {
+				"order": 22,
+				"text": "Weather",
+				"type": "combo",
+				"value": "auto",
+				"options": [
+					{ "label": "Changes now and then", "value": "auto" },
+					{ "label": "Clear", "value": "clear" },
+					{ "label": "Rain (snow in winter)", "value": "rain" },
+					{ "label": "Fog", "value": "fog" }
+				]
+			},
 			"showpanel": {
 				"order": 30,
 				"text": "Show the panel",

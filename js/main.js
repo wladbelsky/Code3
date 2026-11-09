@@ -3,13 +3,14 @@
 let scene, camera, renderer, sunLight, hemi;
 const FX = {};
 let T = 0, paused = false, fpsLimit = 0, lastMs = 0, ready = false;
-const ENV = { elev: 30, lightsOn: 0, night: 0, day: 1, ppu: 10, smokeTint: new THREE.Color(0xbbbbbb), dustTint: new THREE.Color(0xa89878) };
+const ENV = { wet: 0, elev: 30, lightsOn: 0, night: 0, day: 1, ppu: 10, smokeTint: new THREE.Color(0xbbbbbb), dustTint: new THREE.Color(0xa89878) };
 
 /* ---- URL test parameters (for browser preview) ---- */
 const QS = new URLSearchParams(location.search);
 if (QS.has('hour')) { CFG.timeMode = 'fixed'; CFG.fixedHour = parseFloat(QS.get('hour')); }
 if (QS.has('zoom')) CFG.zoom = parseFloat(QS.get('zoom'));
 if (QS.has('season')) CFG.season = QS.get('season');
+if (QS.has('sky')) CFG.sky = QS.get('sky');
 
 /* ---- Wallpaper Engine properties ---- */
 function rgbFromWE(str) { return str.split(' ').map(c => Math.round(clamp(parseFloat(c), 0, 1) * 255)).join(','); }
@@ -29,6 +30,7 @@ window.wallpaperPropertyListener = {
     if (has('shadows')) CFG.shadows = p.shadows.value;
     if (has('season') && !QS.has('season')) CFG.season = p.season.value;
     if (has('weather')) CFG.weather = p.weather.value;
+    if (has('sky') && !QS.has('sky')) CFG.sky = p.sky.value;
     if (has('showpanel')) CFG.showPanel = p.showpanel.value;
     if (has('panelposition')) CFG.panelPos = p.panelposition.value;
     if (has('panelscale')) CFG.panelScale = p.panelscale.value;
@@ -93,7 +95,7 @@ function init() {
 
   ready = true;
   window.addEventListener('resize', resize);
-  buildUnits(); buildHelis(); buildTraffic();
+  buildUnits(); buildHelis(); buildTraffic(); WEATHER.build();
   TERM.build();
   buildUI(); PERSIST.restore(); applySettings(); resize(); updateEnvironment(); updateLights();
   requestAnimationFrame(frame);
@@ -146,15 +148,21 @@ function updateEnvironment() {
   sunLight.color.copy(k.sun); sunLight.intensity = k.si;
   _hg.setHex(S.hg).multiplyScalar(lerp(0.35, 1, smoothstep(-8, 12, sp.elev)));
   hemi.color.copy(k.hs); hemi.groundColor.copy(k.hg).lerp(_hg, 0.6); hemi.intensity = k.hi;
-  scene.fog.color.copy(k.fog); renderer.setClearColor(k.fog);
+  scene.fog.color.copy(k.fog);
+  // the weather: rain dims the sun and greys the sky (the lights come on sooner); fog closes in
+  const wr = WEATHER.rain, wf = WEATHER.fog, oc = Math.max(wr * 0.9, wf);
+  sunLight.intensity *= lerp(1, 0.3, Math.max(wr, wf * 0.7)); hemi.intensity *= lerp(1, 0.82, oc);
+  scene.fog.color.lerp(_hg.setHex(sp.elev > -4 ? 0x8a929c : 0x1c222c), oc * 0.75); renderer.setClearColor(scene.fog.color);
+  scene.fog.near = CAM_D - lerp(40, 70, wf); scene.fog.far = CAM_D + lerp(560, 90, wf);
   ENV.smokeTint.copy(k.smoke);
   ENV.dustTint.setHex(S.ground).lerp(k.smoke, 0.45);
-  ENV.lightsOn = 1 - smoothstep(-3, 5, sp.elev);
+  ENV.lightsOn = Math.max(1 - smoothstep(-3, 5, sp.elev), oc * 0.6);
+  ENV.wet = TERRAIN.season === 'winter' ? 0 : wr;   // (snow does not shine)
   ENV.night = 1 - smoothstep(-10, 1, sp.elev);
   ENV.day = smoothstep(-6, 10, sp.elev);
   CITY.winMat.emissive.setHex(0xffc27a).multiplyScalar(0.75 * ENV.lightsOn);
   CITY.bayLight.emissive.setHex(0xfff0d0).multiplyScalar(0.9 * ENV.lightsOn);
-  CITY.poolMat.opacity = 0.42 * ENV.lightsOn;
+  CITY.poolMat.opacity = 0.42 * ENV.lightsOn * (1 + 0.7 * ENV.wet);   // (a wet road shines)
   for (const s of CITY.signs) s.mat.color.setScalar(lerp(0.32, 1, ENV.day));   // (unlit: dimmed by hand at night)
 }
 function updateLights() {
@@ -281,7 +289,7 @@ function updateUI() {
   const now = getNow(), mi = now.getHours() * 60 + now.getMinutes();
   if (mi !== uiMinute) { uiMinute = mi; setTxt(uiEl('clock'), now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })); }
   const e = ENV.elev, s = PERSIST.today();
-  setTxt(uiEl('daystate'), (e > 6 ? 'Day' : e > -6 ? 'Twilight' : 'Night') + ' · ' + TERRAIN.season[0].toUpperCase() + TERRAIN.season.slice(1));
+  setTxt(uiEl('daystate'), (e > 6 ? 'Day' : e > -6 ? 'Twilight' : 'Night') + ' · ' + TERRAIN.season[0].toUpperCase() + TERRAIN.season.slice(1) + (WEATHER.fog > 0.4 ? ' · Fog' : WEATHER.rain > 0.4 ? (TERRAIN.season === 'winter' ? ' · Snow' : ' · Rain') : ''));
   setTxt(uiEl('callsn'), s.calls);
   const n = Math.round(LOAD.level * 10), cells = uiEl('loadbar').children;
   for (let i = 0; i < cells.length; i++) cells[i].classList.toggle('on', i < Math.max(1, n));
@@ -350,6 +358,7 @@ function step(dt) {
   for (const h of HELIS) h.update(dt);
   VISITS.update(dt);
   DRILLS.update(dt);
+  WEATHER.update(dt);
   TRAFFIC.update(dt);   // (after the units: they decide who gives way)
   DISPATCH.update(dt);
   RADIO.update(dt);

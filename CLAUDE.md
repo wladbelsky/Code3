@@ -16,7 +16,7 @@ the terminal UI — done. 5. Scenes on site: structure fire, crash, car fire, cr
 dispatch board), the splash and the settings drawer to match — done (see "Panel & persistence"). 9. Polish: performance (vegetation sectors, merged doors, instanced signal lamps), the animated
 preview GIF, screenshots, README — done; left: the Workshop upload (by hand, from WE) and GitHub Pages for the live demo.
 **After stage 9** (approved, in this order): civilian headlights at night — done; drills at the station in quiet hours —
-done; routine vehicles (school bus, garbage truck, delivery van); weather (rain / fog, wet reflections, more crashes);
+done; routine vehicles (school bus, garbage truck, delivery van) — done; weather (rain / fog, wet reflections, more crashes) — done;
 2nd-alarm fires with the neighbouring districts' units joining; a police pursuit with Air 1; pedestrians **last, as a
 concept first** (a basic model, screenshots and a performance measurement before building it out). Also: in the browser
 the ⚙ Settings button overlaps the CAD terminal (radio log) — move one of them.
@@ -37,7 +37,7 @@ fictional (default FAIRHAVEN).
 | `js/models.js` | mesh helpers (`M`, `box`, `cyl`, `taper`, `prism`, `strut`, `deckLine`…), `mergeStatic`, `disposeTree`, nav lights (`navLights`, `NAV_MATS`), searchlights, seasonal shared materials `ROOF_MAT` / `HOUSE_ROOFS` (`seasonMats`) |
 | `js/vehicles.js` | vehicle models, facing +x, wheels on y = 0: civilian cars (`carModel(kind, colour)`, `randomCar`); apparatus `UNIT_MODELS[type](livery)` (engine, ladder with `aerial` yaw / pitch / fly, rescue, medic, chief, patrol) → `{ group, bars, len, wid, dyn }`; `LIVERY` (town / county / ambulance / sheriff, `livery(l)` fills in the town's); headlights, grille and front warning lights; light bar segments swap `LB_MATS` [off, on] |
 | `js/city.js` | `CITY_LAYOUT` (the one source of positions), `buildCity()`, `CITY` (houses with addresses, bays with roll-up doors, police lot stalls, signals, signs, `vegAt`, `signal(axis)`, `update`, `setTown`), `pavedAt` — see "Town" |
-| `js/terrain.js` | `TERRAIN`: the ground (tiled canvas texture + vertex-colour patches), the vegetation per season (InstancedMesh per kind, placed where `CITY.vegAt` allows), weather particles (snowfall, falling leaves) |
+| `js/terrain.js` | `TERRAIN`: the ground (tiled canvas texture + vertex-colour patches), the vegetation per season (InstancedMesh per kind, placed where `CITY.vegAt` allows), weather particles (snowfall, falling leaves), `WEATHER` (rain, fog, wet roads) — see "Weather" |
 | `js/roads.js` | `ROADS`: the street graph (crossings + far ends), `route(from, to)` (Dijkstra over node × heading: no U-turns on screen), `lane` (right-hand offsets), `way(from, to, pre, post, o)`; `Way` (rounded, sampled polyline with headings and a curvature / braking speed limit) — see "Units & traffic" |
 | `js/units.js` | `UNIT_TYPES`, `ROSTER`, `HOSP` (the ER places), `Unit` (homes, run state machine, zones, traffic rules, light bars; `radio` / `short` names, `callRef`; `transport` / `leaveHospital`; the ladder's aerial: `aimAerial`, `aerialTip`, `aerialK` / `aerialWant`), `UNITS`, `ZONES`, `houseDest` / `farDest`; `Visitor`, `VISITORS`, `VISITS`, `MOVERS`, `offEnd` / `throughWay` — see "Units & traffic" |
 | `js/traffic.js` | `CIVS` (a pool of `CIV_MAX` civilian cars), `Civ` (spawn off screen → across town → off screen; following, crossings and their boxes `CIV_BOXES`, giving way to units `unitCap`, pulling over for code 3, easing round obstacles, backing off), `TRAFFIC` (spawning by `trafficWanted`: `CFG.traffic` by the hour), `wayBoxes`, `boxConflict`, `alongStreet` — see "Civilian traffic" |
@@ -57,7 +57,7 @@ fictional (default FAIRHAVEN).
 
 ## Rules / conventions
 - **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in
-  `index.html` (WE's CEF caches aggressively). Current: `v=15`.
+  `index.html` (WE's CEF caches aggressively). Current: `v=17`.
 - **New WE property**: add it to `project.json`, read it in `applyUserProperties` (`main.js`) into `CFG`,
   then run `python tools/gen_properties.py`. Property `order` decides the browser-drawer group
   (0–9 camera/time, 10–19 audio/calls, 20–29 terrain & season, 30–39 panel & terminal, 40–49 units, 50–59 town).
@@ -251,6 +251,18 @@ fictional (default FAIRHAVEN).
 - The tests count cars let into a box without committing (`TRAFFIC.intruded`, must be 0) and watch `civStill` (a car
   standing > 100 s) with the stuck detector.
 
+## Weather (`WEATHER`, `js/terrain.js`; property `sky`, URL `?sky=`)
+- `sky`: `auto` (a roll every 15–40 min: mostly clear, rain 22 %, fog only 4–11 h) / `clear` / `rain` / `fog`. `WEATHER.rain` /
+  `.fog` ease 0 … 1 over a minute or so. `updateEnvironment` dims the sun and the hemisphere, greys the fog colour, closes the
+  fog in, brings the street lights on sooner; the board's day line gets `· Rain` / `· Snow` / `· Fog`.
+- **Rain**: one `LineSegments` of `RAIN_N` drops round the camera target (as many drawn as it is heavy). In winter no streaks:
+  the snowfall thickens, and `ENV.wet` stays 0.
+- **Wet roads** (`ENV.wet`, `wetRoads`): a dark film over the asphalt (y 0.016, the avenues broken at the streets so a
+  crossing is not darkened twice; drawn before the additive pools), long soft smears toward the camera (`WET_D`, the camera
+  is fixed at 135°) under the street lights and under every flashing unit (red / blue with its flash, `lastFlash`), the
+  light pools and the headlight beams brighter. +4 draw calls, only while wet.
+- The dispatcher weighs `kind: 'mva'` calls × (1 + 1.5 rain).
+
 ## Helicopters (`js/helis.js`)
 - **Air 1** (police) lives on the complex's pad (`CITY_LAYOUT.helipad`), **Medevac 1** on the hospital's roof pad. They
   are not `UNITS` (no roads, no zones): `HELIS`, the same CAD states (`HELI_STATES`), `air: true`; the dispatcher treats
@@ -308,7 +320,7 @@ fictional (default FAIRHAVEN).
 - WE: "Open from File" → `project.json` (audio listener + properties come from WE).
 - Browser preview: serve the folder, e.g. `python -m http.server 8766`, open `http://localhost:8766/`.
   The ⚙ Settings drawer mirrors all WE properties (stored in `localStorage`); URL params `?hour=22`,
-  `?zoom=150`, `?season=winter`, `?demo=1`, `?ts=N` (time scale).
+  `?zoom=150`, `?season=winter`, `?sky=rain`, `?demo=1`, `?ts=N` (time scale).
 - **Automated tests** (`tests/`, Playwright Test in headless Chromium + SwiftShader WebGL): run them in Docker —
   `powershell -ExecutionPolicy Bypass -File tools/test.ps1 [file / -g pattern]` (no local Node; `$env:SEED = N` for
   another seed); CI runs the same image on every push / PR. Run them after a change.

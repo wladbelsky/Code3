@@ -39,6 +39,9 @@ lighter still: lower the **FPS limit** in Wallpaper Engine's settings (30 is ple
 - Streets with crosswalks, traffic lights at the main crossings and all-way stops elsewhere; street lights at night.
 - **Seasons** (property **Season**: by the PC date, or fixed): snow on the roofs and firs in winter, green in spring
   and summer, golden and red trees in autumn. **Snowfall / falling leaves** can be switched off.
+- **Weather**: it changes now and then (or set it to clear, rain or fog). Rain greys the sky and brings the street lights on
+  early, the roads go dark and shine with the street lights and the red and blue of the light bars, and there are more
+  crashes. In winter it snows harder instead; fog comes in the mornings.
 - **Town name** property: on the station, police, hospital and school signs and on the panel.
 
 ## Units
@@ -70,6 +73,8 @@ lighter still: lower the **FPS limit** in Wallpaper Engine's settings (30 is ple
 ![An engine passing traffic pulled over on Main St](screenshots/traffic.jpg)
 
 ![A winter night run](screenshots/run.jpg)
+
+![Rain at night](screenshots/rain.jpg)
 
 - **Quiet hours at the station**: when the town is calm a unit rolls out onto the apron now and then — the engine tests
   its pump, the ladder raises its aerial, the ambulances get washed — and backs in again. At night every car and unit

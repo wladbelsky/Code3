@@ -32,6 +32,7 @@ const CFG = {
   townName: 'FAIRHAVEN',   // the town (dispatch, panel)
   season: 'auto',     // auto (PC date) / spring / summer / autumn / winter
   weather: true,      // snowfall in winter, falling leaves in autumn
+  sky: 'auto',        // the weather: auto (it changes now and then) / clear / rain / fog (WEATHER)
   terminal: true,     // the dispatch terminal (CAD) on screen
   termPos: 'tl',
   saveState: true,    // remember the CAD log, the call counter, the day's calls and the load between sessions

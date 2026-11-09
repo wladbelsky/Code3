@@ -19,8 +19,9 @@ const DISPATCH = {
   /* a call type by the load tier's weights, among those whose first unit type has someone free */
   pickType() {
     const tier = LOAD_TIERS.indexOf(loadTier()), c = Object.entries(INCIDENT_TYPES).filter(([, t]) => t.w[tier] > 0 && this.free(t.units[0]).length);
-    let r = Math.random() * c.reduce((s, [, t]) => s + t.w[tier], 0);
-    for (const [k, t] of c) if ((r -= t.w[tier]) <= 0) return k;
+    const w = t => t.w[tier] * (t.kind === 'mva' ? 1 + 1.5 * WEATHER.rain : 1);   // (crashes: more in the rain)
+    let r = Math.random() * c.reduce((s, [, t]) => s + w(t), 0);
+    for (const [k, t] of c) if ((r -= w(t)) <= 0) return k;
     return c.length ? c[c.length - 1][0] : null;
   },
   newCall(key) {

@@ -140,7 +140,7 @@ const TERRAIN = {
     const on = w.kind && CFG.weather; w.pts.visible = !!on;
     if (!on) return;
     const P = w.pts.geometry.attributes.position.array, C = w.pts.geometry.attributes.color.array, snow = w.kind === 'snow';
-    w.acc += dt * (snow ? 220 : 26);
+    w.acc += dt * (snow ? 220 * (1 + 2 * WEATHER.rain) : 26);   // (heavier in the winter's "rain")
     while (w.acc > 1) {
       w.acc--; const i = w.next; w.next = (w.next + 1) % w.n;
       const p = VIEW.groundAt(rand(-1.15, 1.15), rand(-1.2, 1.3), 0);
@@ -161,3 +161,76 @@ const TERRAIN = {
   }
 };
 const WUP_T = new V3(0, 1, 0), VEG_SCALE = 3.2;   // the vegetation was made for 1 unit = 10 m (Forward Air Base); here 1 unit = 1 m
+
+/* ===== Weather: clear, rain or fog (property `sky`; 'auto': it changes every 15–40 min — mostly clear, rain now and
+   then, fog only in the morning; in winter the rain is snow: the snowfall thickens). WEATHER.rain / .fog ease 0 … 1 over
+   a minute or so; main.js dims the light, greys the sky, closes the fog in and wets the roads (the light pools and the
+   beams brighter); the dispatcher has more crashes in the rain. The rain: streaks falling round the screen centre — one
+   LineSegments, a fixed pool of drops, as many drawn as the rain is heavy. ===== */
+const RAIN_N = 1600, WET_BARS = 32, _wv = new V3(), _wm = new THREE.Matrix4(), _wc = new THREE.Color(), _ws = new V3(), _wp = new V3();
+const WET_D = new V3(-Math.SQRT1_2, 0, Math.SQRT1_2), _wq = new THREE.Quaternion().setFromAxisAngle(new V3(0, 1, 0), -Math.atan2(WET_D.z, WET_D.x));   // (a reflection runs toward the camera: down the screen)
+const WEATHER = {
+  kind: 'clear', rain: 0, fog: 0, timer: rand(300, 1200), mesh: null, drops: null, film: null, lamps: null, bars: null,
+  build() {
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(RAIN_N * 6), 3));
+    const m = new THREE.LineBasicMaterial({ color: 0xd4e0ee, transparent: true, opacity: 0, depthWrite: false, fog: false });
+    this.mesh = new THREE.LineSegments(g, m); this.mesh.frustumCulled = false; this.mesh.renderOrder = 3; this.mesh.visible = false; scene.add(this.mesh);
+    this.drops = new Float32Array(RAIN_N * 3); this.started = new Uint8Array(RAIN_N);
+    // the wet road: a dark film over the asphalt (the avenues broken at the streets: two layers would darken a crossing twice)
+    const v = [], E = L_.ext, hw = ROAD_W / 2, y = 0.016, q = (x0, z0, x1, z1) => v.push(x0, y, z0, x0, y, z1, x1, y, z1, x0, y, z0, x1, y, z1, x1, y, z0);
+    for (const s of L_.streets) q(-E, s.z - hw, E, s.z + hw);
+    const bs = [-E, ...L_.streets.map(s => s.z).sort((a, b) => a - b), E];
+    for (const a of L_.avenues) for (let i = 0; i + 1 < bs.length; i++) q(a.x - hw, i ? bs[i] + hw : -E, a.x + hw, i + 2 < bs.length ? bs[i + 1] - hw : E);
+    const fg = new THREE.BufferGeometry(); fg.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
+    this.film = new THREE.Mesh(fg, new THREE.MeshBasicMaterial({ color: 0x06090e, transparent: true, opacity: 0, depthWrite: false }));
+    this.film.frustumCulled = false; this.film.renderOrder = -1; this.film.visible = false; scene.add(this.film);
+    // the reflections: long soft smears toward the camera — the street lights' (static) and the light bars' (red / blue with their flash)
+    const sg = new THREE.PlaneGeometry(1, 1); sg.rotateX(-Math.PI / 2);
+    const smear = c => new THREE.MeshBasicMaterial({ map: TEX.soft, color: c, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+    this.lamps = new THREE.InstancedMesh(sg, smear(0xffb870), CITY.pools.length);
+    CITY.pools.forEach(([x, z], i) => this.lamps.setMatrixAt(i, _wm.compose(_wp.set(x + WET_D.x * 6, 0.058, z + WET_D.z * 6), _wq, _ws.set(12, 1, 3.4))));
+    this.bars = new THREE.InstancedMesh(sg, smear(0xffffff), WET_BARS); this.bars.count = 0; this.bars.setColorAt(0, _wc.setHex(0xffffff));
+    for (const o of [this.lamps, this.bars]) { o.frustumCulled = false; o.renderOrder = 1; o.visible = false; scene.add(o); }
+  },
+  roll() {
+    const h = getNow().getHours(), r = Math.random();
+    return r < 0.22 ? 'rain' : r < 0.36 && h >= 4 && h < 11 ? 'fog' : 'clear';
+  },
+  wetRoads() {
+    const w = ENV.wet, on = w > 0.02, B = this.bars;
+    this.film.visible = this.lamps.visible = B.visible = on; if (!on) return;
+    this.film.material.opacity = 0.42 * w;
+    this.lamps.material.opacity = 0.42 * w * ENV.lightsOn;
+    B.material.opacity = 0.6 * w * lerp(0.45, 1, ENV.night);
+    let n = 0;
+    for (const u of MOVERS) if (u.lastFlash >= 0 && u.model.group.visible && n < WET_BARS) {
+      B.setMatrixAt(n, _wm.compose(_wp.set(u.pos.x + WET_D.x * 5, 0.06, u.pos.z + WET_D.z * 5), _wq, _ws.set(14, 1, 5.5)));
+      B.setColorAt(n++, _wc.setHex(u.lastFlash ? 0x2a58ff : 0xff2a20));
+    }
+    B.count = n; B.instanceMatrix.needsUpdate = true; B.instanceColor.needsUpdate = true;
+  },
+  update(dt) {
+    if (!this.mesh) this.build();
+    if (CFG.sky !== 'auto') this.kind = CFG.sky;
+    else if ((this.timer -= dt) <= 0) { this.timer = rand(900, 2400); this.kind = this.roll(); }
+    const winter = TERRAIN.season === 'winter';
+    this.rain += clamp((this.kind === 'rain' ? 1 : 0) - this.rain, -dt / 60, dt / 60);
+    this.fog += clamp((this.kind === 'fog' ? 1 : 0) - this.fog, -dt / 90, dt / 90);
+    this.wetRoads();
+    const k = winter ? 0 : this.rain, n = Math.round(RAIN_N * k), M = this.mesh;
+    M.visible = n > 0; if (!n) return;
+    M.material.opacity = lerp(0.55, 0.6, ENV.night) * Math.min(1, k * 1.5);
+    const P = M.geometry.attributes.position.array, D = this.drops, c = CAM_TGT, half = VIEW_H * 100 / CFG.zoom * 1.6;
+    const vx = WIND.x * 2.5, vz = WIND.z * 2.5, vy = -26;
+    for (let i = 0; i < n; i++) {
+      let x = D[i * 3], y = D[i * 3 + 1], z = D[i * 3 + 2];
+      if (!this.started[i] || y < 0 || Math.abs(x - c.x) > half || Math.abs(z - c.z) > half) {   // (a new drop somewhere over the screen)
+        x = c.x + rand(-half, half); z = c.z + rand(-half, half); y = this.started[i] ? rand(40, 60) : rand(0, 60); this.started[i] = 1;
+      }
+      x += vx * dt; y += vy * dt; z += vz * dt; D[i * 3] = x; D[i * 3 + 1] = y; D[i * 3 + 2] = z;
+      _wv.set(vx, vy, vz).multiplyScalar(0.045);   // (a streak ~1.2 m long, along its fall)
+      P[i * 6] = x; P[i * 6 + 1] = y; P[i * 6 + 2] = z; P[i * 6 + 3] = x - _wv.x; P[i * 6 + 4] = y - _wv.y; P[i * 6 + 5] = z - _wv.z;
+    }
+    M.geometry.setDrawRange(0, n * 2); M.geometry.attributes.position.needsUpdate = true;
+  }
+};

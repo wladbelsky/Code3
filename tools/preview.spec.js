@@ -43,6 +43,10 @@ const SCENES = {
       CAM_TGT.set(u.pos.x + 6, 0, u.pos.z); updateCamera();
       return c && u.latOff < -2 && c.pulled && Math.abs(c.pos.x - u.pos.x) < 6;
     } },
+  // the weather
+  rain: { hour: 20.8, season: 'summer', zoom: 170, at: [0, 0], prep: () => { CFG.sky = 'rain'; WEATHER.rain = 1; CFG.calls = 0; UNITS[0].dispatch(houseDest(CITY.houses[22], 0)); UNITS[3].dispatch(houseDest(CITY.houses[22], 1)); }, until: () => UNITS[0].state === 'responding' && UNITS[0].pos.z > 49 && UNITS[0].pos.x > -24 },
+  rainday: { hour: 13, season: 'autumn', zoom: 170, at: [0, 0], prep: () => { CFG.sky = 'rain'; WEATHER.rain = 1; __t.sim(40); } },
+  fog: { hour: 7.5, season: 'spring', zoom: 130, at: [0, 0], prep: () => { CFG.sky = 'fog'; WEATHER.fog = 1; __t.sim(40); } },
   // a winter night run: the engine and a medic pulling out onto Main St, lights going
   run: { hour: 21.5, season: 'winter', zoom: 190, at: [-12, 38], prep: () => { CFG.calls = 0; UNITS[0].dispatch(houseDest(CITY.houses[22], 0)); UNITS[3].dispatch(houseDest(CITY.houses[22], 1)); },
     until: () => UNITS[0].state === 'responding' && UNITS[0].pos.z > 49 && UNITS[0].pos.x > -24 }

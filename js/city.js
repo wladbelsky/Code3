@@ -207,6 +207,7 @@ function buildStreetLights(g, dyn) {
   const inst = new THREE.InstancedMesh(pg, pm, pools.length), mtx = new THREE.Matrix4();
   pools.forEach(([x, z], i) => inst.setMatrixAt(i, mtx.makeScale(8, 1, 8).setPosition(x, 0.06, z)));
   inst.renderOrder = 1; inst.frustumCulled = false; g.add(inst); dyn.push(inst);
+  CITY.pools = pools;   // (WEATHER: their reflections on a wet road)
 }
 
 /* ---- the public safety complex ---- */

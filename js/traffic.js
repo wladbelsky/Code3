@@ -334,7 +334,7 @@ const BEAMS = {
   },
   update() {
     const on = ENV.lightsOn; this.mesh.visible = on > 0.02; if (!this.mesh.visible) return;
-    this.mat.opacity = 0.32 * on;
+    this.mat.opacity = 0.32 * on * (1 + 0.8 * (ENV.wet || 0));   // (on a wet road: brighter)
     let n = 0;
     const put = (x, z, yaw, len, wid) => {   // (ahead of the bumper, a little longer than wide)
       const c = Math.cos(yaw), s = Math.sin(yaw), f = len / 2 + 4.2;
