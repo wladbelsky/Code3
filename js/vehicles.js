@@ -53,7 +53,7 @@ const LB_MATS = {
 function lightBar(g, bars, x, y, w, cols, depth) {
   const d = depth || 0.3, sw = w / cols.length;
   box(g, d + 0.04, 0.08, w + 0.04, 0x222326, x, y + 0.04, 0);
-  cols.forEach((c, i) => { const m = box(g, d, 0.14, sw - 0.03, LB_MATS[c][0], x, y + 0.15, -w / 2 + sw * (i + 0.5)); bars.push({ mesh: m, col: c, ph: i < cols.length / 2 ? 0 : 1 }); });
+  cols.forEach((c, i) => { const m = box(g, d, 0.14, sw - 0.03, LB_MATS[c][0], x, y + 0.15, -w / 2 + sw * (i + 0.5)); bars.push({ mesh: m, col: c, ph: i < cols.length / 2 ? 0 : 1, main: true }); });   // (main: the roof bar, where the glow goes — not the corner flashers)
 }
 /* a corner / side flasher (a small box) */
 function flasher(g, bars, x, y, z, c, ph, sx, sy, sz) { const m = box(g, sx || 0.12, sy || 0.22, sz || 0.22, LB_MATS[c][0], x, y, z); bars.push({ mesh: m, col: c, ph }); return m; }

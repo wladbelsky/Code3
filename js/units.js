@@ -42,7 +42,8 @@ class Unit {
     this.radio = titleCase(cs); this.short = type === 'patrol' ? cs.replace(/-ADAM-/, 'A') : this.spec.tag + cs.split(' ').pop(); this.callRef = null; this.cadState = 'quarters';
     const m = this.model = UNIT_MODELS[type](liv); this.len = m.len; this.wid = m.wid;
     // glow points over the bar's two halves (they flash with it), head / tail lights at night
-    const glow = ph => { const b = m.bars.filter(s => s.ph === ph && s.mesh.position.y > 1.6); if (!b.length) return null;
+    const main = m.bars.filter(s => s.main); this.barX = main.length ? main[0].mesh.position.x : 0;   // (how far ahead of its centre the roof bar is)
+    const glow = ph => { const b = main.filter(s => s.ph === ph); if (!b.length) return null;
       const p = b.reduce((a, s) => a.add(s.mesh.position), new V3()).divideScalar(b.length); const c = b.some(s => s.col === 'b') ? 0x4070ff : 0xff3020;
       const pts = navLights(m.group, [[p.x, p.y + 0.15, p.z, c]], null, 2.4); pts.material.userData.day = true; return pts.material; };
     this.glow = [glow(0), glow(1)].filter(Boolean);

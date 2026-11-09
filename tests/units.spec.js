@@ -77,6 +77,12 @@ test('the dispatcher keeps units moving for 40 minutes without anyone getting st
   expect(runs.size).toBeGreaterThan(5);
 });
 
+test('the glow of a light bar sits over the roof bar, not back along the vehicle', async ({ wp }) => {
+  await wp.boot();
+  const r = await wp.run(() => [...UNITS, ...VISITORS].map(u => { const pts = u.glow.map(mat => u.model.group.children.find(o => o.isPoints && o.material === mat)); return { who: u.cs, n: pts.length, off: pts.map(p => Math.abs(p.geometry.attributes.position.getX(0) - u.barX)) }; }));
+  for (const u of r) { expect(u.n, u.who).toBe(2); for (const d of u.off) expect(d, u.who).toBeLessThan(0.01); }
+});
+
 test('turning at a signal, code 1 goes by its own light', async ({ wp }) => {
   await wp.boot();
   const r = await wp.run(() => {
