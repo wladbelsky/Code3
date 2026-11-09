@@ -19,7 +19,7 @@ preview GIF, screenshots, README — done; left: the Workshop upload (by hand, f
 done; routine vehicles (school bus, garbage truck, delivery van) — done; weather (rain / fog, wet reflections, more crashes) — done;
 2nd-alarm fires with the neighbouring districts' units joining — done; a police pursuit with Air 1 — done; pedestrians **last, as a
 concept first** (a basic model, screenshots and a performance measurement before building it out). Also: in the browser
-the ⚙ Settings button overlaps the CAD terminal (radio log) — move one of them.
+the ⚙ Settings button overlapped the CAD terminal — done (it sits bottom left, under the 58 px the panel and the terminal keep free).
 Original work in the genre: no names, logos, models or assets of existing games or real departments; the town is
 fictional (default FAIRHAVEN).
 
@@ -57,7 +57,7 @@ fictional (default FAIRHAVEN).
 
 ## Rules / conventions
 - **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in
-  `index.html` (WE's CEF caches aggressively). Current: `v=19`.
+  `index.html` (WE's CEF caches aggressively). Current: `v=20`.
 - **New WE property**: add it to `project.json`, read it in `applyUserProperties` (`main.js`) into `CFG`,
   then run `python tools/gen_properties.py`. Property `order` decides the browser-drawer group
   (0–9 camera/time, 10–19 audio/calls, 20–29 terrain & season, 30–39 panel & terminal, 40–49 units, 50–59 town).

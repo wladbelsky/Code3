@@ -34,3 +34,18 @@ test('boots in a normal browser with the settings drawer and stays clean for a m
   const res = await wp.sim(60);
   expect(res.violations).toEqual([]);
 });
+
+test('the settings button is clear of the panel and the terminal, wherever they are', async ({ wp }) => {
+  await wp.boot({ we: false });
+  const hits = await wp.run(() => {
+    const box = id => document.getElementById(id).getBoundingClientRect(), out = [], panel = document.getElementById('panel'), cad = document.getElementById('cad');
+    const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    for (const p of ['tl', 'tr', 'bl', 'br']) for (const t of ['tl', 'tr', 'bl', 'br']) {
+      panel.className = 'pos-' + p; cad.className = 'pos-' + t;
+      const g = box('cfgGear');
+      if (hit(g, box('panel')) || hit(g, box('cad'))) out.push(p + '/' + t);
+    }
+    return out;
+  });
+  expect(hits).toEqual([]);
+});

@@ -86,7 +86,7 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
 
 /* ===== In-browser settings (hidden inside Wallpaper Engine) ===== */
 .cfg-gear {
-  position: fixed; top: 14px; left: 14px; z-index: 20; cursor: pointer;
+  position: fixed; bottom: 14px; left: 14px; z-index: 20; cursor: pointer;   /* (under the 58 px the panel and the terminal keep from the bottom: clear of both, wherever they are) */
   font: 12px var(--sans); color: #e6e8ea; background: rgba(30,34,38,.9); border: 1px solid #4a5158; border-radius: 4px; padding: 6px 11px;
 }
 .cfg-gear:hover { background: #3c434a; color: #fff; }
