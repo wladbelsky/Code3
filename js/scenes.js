@@ -41,49 +41,59 @@ function waterArc(p, t, acc, dt, rate) {
 /* ---- the house fire ---- */
 class FireScene {
   constructor(c) {
-    this.c = c; const h = this.h = c.site.house; this.heat = 0.35; this.out = false; this.outAt = 0; this.done = false; this.acc = {}; this.water = 0;
+    this.c = c; const h = this.h = c.site.house; this.heat = 0.35; this.out = false; this.outAt = 0; this.done = false; this.acc = {}; this.water = 0; this.big = false; this.bigK = 0; this.strikeT = 0;
     const R = h.rot ? -1 : 1, wp = (lx, ly, lz) => new V3(h.x + lx * R, ly, h.z + lz * R);
     // emitters: front windows (both storeys), the roof
-    this.em = [wp(-h.w / 4, h.h * 0.55, h.d / 2 + 0.3), wp(h.w / 4, h.h * 0.8, h.d / 2 + 0.3), wp(-h.w / 5, h.h + 1.4, 0), wp(h.w / 5, h.h + 1.0, -h.d / 5)];
-    this.target = wp(0, h.h * 0.6, h.d / 2);                // where the streams aim
-    this.yard = wp(0.8, 0, h.d / 2 + 4);                  // the nozzle crew
-    this.crew = null;
+    this.em = [wp(-h.w / 4, h.h * 0.55, h.d / 2 + 0.3), wp(h.w / 4, h.h * 0.8, h.d / 2 + 0.3), wp(-h.w / 5, h.h + 1.4, 0), wp(h.w / 5, h.h + 1.0, -h.d / 5),
+      wp(-h.w / 2 - 0.3, h.h * 0.5, h.d / 5), wp(h.w / 2 + 0.3, h.h * 0.6, -h.d / 5), wp(0, h.h + 2, h.d / 4)];   // (the last three: only on a second alarm)
+    this.targets = [wp(0, h.h * 0.6, h.d / 2), wp(-h.w / 2 + 0.5, h.h * 0.55, h.d / 2), wp(h.w / 2 - 0.5, h.h * 0.7, h.d / 2)];   // where the engines' streams aim
+    this.yards = [wp(0.8, 0, h.d / 2 + 4), wp(-h.w / 2 - 1.5, 0, h.d / 2 + 3), wp(h.w / 2 + 1.5, 0, h.d / 2 + 3)];                 // their nozzle crews
+    this.crews = [];
   }
+  /* a second alarm: it gets away from the first companies until the neighbours' are working */
+  strike() { this.big = true; this.strikeT = T; }
+  dropCrews() { for (const i of this.crews) if (i != null) CREW.drop(i); this.crews = []; }
   get ready() { return this.out && T - this.outAt > 20; }
   update(dt) {
     if (this.closed) { this.done = true; return; }
     // the streams: an engine's line and the ladder's aerial, from a few seconds after they arrive
-    let streams = 0;
+    let streams = 0, eng = 0, lad = 0, aidOn = false;
     for (const u of this.c.units) {
       if (u.callRef !== this.c || u.state !== 'on_scene' || u.t < 6 || this.out) { if (u.model.aerial && u.callRef === this.c) u.aerialWant = this.out ? 0 : u.aerialWant; continue; }
-      if (u.type === 'engine') {
-        if (!this.crew) { this.crew = CREW.take('fire', this.yard.x, this.yard.z, Math.atan2(this.target.x - this.yard.x, this.target.z - this.yard.z)); }
-        _sp.set(this.yard.x, 1.2, this.yard.z); waterArc(_sp, this.target, this.acc.e || (this.acc.e = {}), dt, 26); streams++;
-      } else if (u.type === 'ladder') {
-        u.aimAerial(this.em[2]);
-        if (u.aerialK > 0.98) { u.aerialTip(_sp); _st.copy(this.em[2]).setY(this.em[2].y + 0.5); waterArc(_sp, _st, this.acc.l || (this.acc.l = {}), dt, 30); streams++; }
+      if (u.aid) aidOn = true;
+      if (u.type === 'engine' && eng < this.yards.length) {
+        const i = eng++, y = this.yards[i], tg = this.targets[i], ak = 'e' + i;
+        if (this.crews[i] == null) this.crews[i] = CREW.take('fire', y.x, y.z, Math.atan2(tg.x - y.x, tg.z - y.z));
+        _sp.set(y.x, 1.2, y.z); waterArc(_sp, tg, this.acc[ak] || (this.acc[ak] = {}), dt, 26); streams++;
+      } else if (u.type === 'ladder' && (!u.aid || Math.hypot(u.pos.x - this.c.site.house.x, u.pos.z - this.c.site.house.z) < 34)) {   // (a neighbour's parked too far down the street stands by)
+        const e = this.em[2 + Math.min(lad, 1)], ak = 'l' + lad++;
+        u.aimAerial(e);
+        if (u.aerialK > 0.98) { u.aerialTip(_sp); _st.copy(e).setY(e.y + 0.5); waterArc(_sp, _st, this.acc[ak] || (this.acc[ak] = {}), dt, 30); streams++; }
       }
     }
     if (!this.out) {
-      this.heat = clamp(this.heat + dt * (streams ? -0.009 * streams : 0.01), 0, 1);
-      if (this.heat <= 0) { this.out = true; this.outAt = T; if (this.crew != null) { CREW.drop(this.crew); this.crew = null; } }
+      const flare = this.big && !aidOn && T - this.strikeT < 150;   // (the first alarm cannot hold it until help comes)
+      this.heat = clamp(this.heat + dt * (flare ? 0.02 : streams ? -0.009 * streams * (this.big ? 0.5 : 1) : 0.01), 0, 1);
+      if (this.heat <= 0) { this.out = true; this.outAt = T; this.dropCrews(); }
     }
+    if (this.big) this.bigK = Math.min(1, this.bigK + dt / 25);
+    const b = this.bigK;
     // flames and black smoke by the heat; after it, steam fading over a minute
     const k = this.heat, steam = this.out ? Math.max(0, 1 - (T - this.outAt) / 60) : streams ? 0.6 : 0;
-    this.acc.f = (this.acc.f || 0) + dt * 22 * k; this.acc.s = (this.acc.s || 0) + dt * (5 * k + 3 * steam);
+    this.acc.f = (this.acc.f || 0) + dt * 22 * k * (1 + 0.8 * b); this.acc.s = (this.acc.s || 0) + dt * (5 * k * (1 + b) + 3 * steam);
     while (this.acc.f > 1) {
-      this.acc.f--; const e = this.em[Math.floor(Math.random() * (k > 0.6 ? 4 : 3))];
+      this.acc.f--; const e = this.em[Math.floor(Math.random() * (b > 0.2 ? 7 : k > 0.6 ? 4 : 3))];
       _sp.copy(e).add(_sv.set(rand(-0.8, 0.8), rand(-0.2, 0.4), rand(-0.8, 0.8)));
-      FX.fire.spawn(_sp, { v: _sv.set(WIND.x * 0.4, rand(2.5, 4.5), WIND.z * 0.4), s0: rand(1.2, 2) * (0.6 + k * 0.6), s1: rand(2.2, 3.4) * (0.6 + k * 0.6), life: rand(0.6, 1.0), a0: 0.9, color: Math.random() < 0.5 ? 0xffa040 : 0xff6a20 });
+      FX.fire.spawn(_sp, { v: _sv.set(WIND.x * 0.4, rand(2.5, 4.5), WIND.z * 0.4), s0: rand(1.2, 2) * (0.6 + k * 0.6) * (1 + 0.35 * b), s1: rand(2.2, 3.4) * (0.6 + k * 0.6) * (1 + 0.35 * b), life: rand(0.6, 1.0), a0: 0.9, color: Math.random() < 0.5 ? 0xffa040 : 0xff6a20 });
     }
     while (this.acc.s > 1) {
       this.acc.s--; const black = Math.random() < 5 * k / (5 * k + 3 * steam + 1e-6), e = this.em[2 + Math.floor(Math.random() * 2)];
       _sp.copy(e).add(_sv.set(rand(-1, 1), 1.5, rand(-1, 1)));
-      FX.smoke.spawn(_sp, { v: _sv.set(WIND.x * 0.9, rand(2.5, 3.5), WIND.z * 0.9), drag: 0.08, s0: 2.5, s1: black ? 11 : 8, life: rand(6, 9), a0: black ? 0.6 : 0.35, color: black ? 0x2a2622 : 0xd8d8d4 });
+      FX.smoke.spawn(_sp, { v: _sv.set(WIND.x * 0.9, rand(2.5, 3.5), WIND.z * 0.9), drag: 0.08, s0: 2.5, s1: (black ? 11 : 8) + 4 * b, life: rand(6, 9), a0: black ? 0.6 : 0.35, color: black ? 0x2a2622 : 0xd8d8d4 });
     }
   }
   close() {
-    this.closed = true; if (this.crew != null) { CREW.drop(this.crew); this.crew = null; }
+    this.closed = true; this.dropCrews();
     for (const u of this.c.units) if (u.model.aerial) u.aerialWant = 0;
   }
 }
@@ -177,7 +187,7 @@ const CREW = {
   clear() { for (let i = 0; i < this.n; i++) this.drop(i); this.byUnit.clear(); },
   /* a unit standing on scene gets its crew beside it on the sidewalk side (2 for fire / EMS, 1 for police); gone when it leaves */
   update() {
-    for (const u of UNITS) {
+    for (const u of MOVERS) {
       const has = this.byUnit.get(u), on = u.state === 'on_scene' && !u.way && u.t > 3;
       if (on && !has) {
         const h = u.pos.h, rx = -Math.sin(h), rz = Math.cos(h), cx = Math.cos(h), cz = Math.sin(h), n = u.spec.svc === 'pd' ? 1 : 2, list = [];

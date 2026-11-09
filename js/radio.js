@@ -32,6 +32,14 @@ const DISPATCH_LINES = {
   pd: ['{L}, {T}, {A} near {X}. {D}', '{L}, respond to {A}, {T}. {D}', '{L}, copy a {T} at {A}. {D}'],
   far: ['{L}, mutual aid request, {T}, {A}. Respond out of the district.', '{L}, respond mutual aid to {A}, {T}.']
 };
+/* a second alarm: command asks for it, the dispatcher tones out the neighbours ({L}), they report in */
+const ALARM2_LINES = {
+  strike: ['{U} to dispatch, fire has extended to the attic. Strike a second alarm.', '{U}, we are going defensive. Give me a second alarm at {A}.', '{U}, heavy fire through the roof. Second alarm, {A}.'],
+  tone: ['Second alarm, {A}. {L}, respond mutual aid, report to {S} command.', '{L}, second alarm, {A} at {X}. County, report to {S} command.'],
+  arrive: ['{U} on scene, reporting to {S} command.', '{U} arriving on the second alarm.', '{U} on scene, taking a line to the exposure side.'],
+  arriveEms: ['{U} on scene, setting up rehab at the command post.', '{U} arriving on the second alarm, staging with command.'],
+  update: ['{U}, exposures are protected, still heavy fire in the attic.', '{U}, we have water on it from three sides.', '{U}, roof is failing on the east side, everybody stay out.']
+};
 /* units answering the tone-out */
 const ACK_LINES = {
   fire: ['{U}, responding.', '{U} copies, responding.', '{U} en route.'],

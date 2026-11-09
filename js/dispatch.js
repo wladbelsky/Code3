@@ -6,7 +6,8 @@
    The units' state changes drive the radio (DISPATCH.onState): en route, on scene (the first arriving gives a size-up),
    updates while working, released one by one once the call's dwell has run (first arrival + dwell), available,
    in quarters. A call closes once every unit has cleared it.                                                      */
-const MAX_CALLS = 6, TRANSPORTS = new Set(['medical', 'mva']);
+const MAX_CALLS = 6, TRANSPORTS = new Set(['medical', 'mva']), ALARM2_UNITS = ['engine', 'ladder', 'engine', 'medic'];
+const callName = c => c.type.name + (c.second ? ' · 2ND ALARM' : '');
 const CALL_STATUS = { pending: 'PENDING', holding: 'HOLDING', dispatched: 'DISPATCHED', onscene: 'ON SCENE', clearing: 'CLEARING', closed: 'CLOSED' };
 const DISPATCH = {
   calls: [], timer: 25, seq: 0, fillT: 0,
@@ -27,7 +28,7 @@ const DISPATCH = {
   newCall(key) {
     const type = INCIDENT_TYPES[key], s = pickSite(pick(type.at), this.open.map(c => c.site)); if (!s) return null;
     const need = [...type.units]; for (const [u, p] of type.extra || []) if (Math.random() < p) need.push(u);
-    const c = { id: `26-${110341 + this.seq++}`, key, type, site: s, need, units: [], t: T, status: 'pending', arrived: null, dwell: rand(...type.dwell), updates: 0, detail: type.details ? pick(type.details) : '' };
+    const c = { id: `26-${110341 + this.seq++}`, key, type, site: s, need, units: [], t: T, status: 'pending', arrived: null, dwell: rand(...type.dwell), updates: 0, detail: type.details ? pick(type.details) : '', strike: type.kind === 'structure' && Math.random() < lerp(0.25, 0.7, LOAD.level) };
     this.calls.push(c); PERSIST.count(c);
     SCENES.open(c);
     RADIO.say('CAD', `#${c.id}  ${type.name}  ${s.name}`, 'sys');
@@ -36,18 +37,19 @@ const DISPATCH = {
     return c;
   },
   /* the first curb place of the site that no other unit holds (they come and go: a count would repeat one) */
-  freeSlot(c, u) {
+  freeSlot(c, u, nearest) {   // (nearest: the closest free one on either side, -1 when none is — a second alarm's companies)
     if (c.site.kind === 'far') return 0;
     // (taken: a curb another unit is headed for or still stands at — of this call or one just closed, not yet pulled away)
-    const near = (q, x) => Math.hypot(q[0] - x[0], q[1] - x[1]) < 10;
-    const taken = q => UNITS.some(x => x !== u && x.state !== 'quarters' && ((x.call && x.call.curb && x.state !== 'returning' && near(q, x.call.curb)) || near(q, [x.pos.x, x.pos.z])));
-    const n = siteSlots(c.site).length; let k = 0;
-    while (k < n - 1 && taken(siteDest(c.site, k).curb)) k++;
-    return k;
+    const near = (q, x) => Math.hypot(q[0] - x[0], q[1] - x[1]) < 9;   // (the curb across the street is 10 m away: not the same place)
+    const taken = q => MOVERS.some(x => x !== u && x.state !== 'quarters' && ((x.call && x.call.curb && x.state !== 'returning' && near(q, x.call.curb)) || near(q, [x.pos.x, x.pos.z])));
+    const sl = siteSlots(c.site), order = [...sl.keys()];
+    if (nearest) order.sort((p, q) => Math.abs(sl[p].a - c.site.a) - Math.abs(sl[q].a - c.site.a));
+    for (const k of order) if (!taken(siteDest(c.site, k).curb)) return k;
+    return nearest ? -1 : sl.length - 1;
   },
   /* free units for what the call still needs: the tone-out (or a patrol's own stop) and the acknowledgements */
   assign(c) {
-    const have = c.units.map(u => u.type), got = [];
+    const have = c.units.filter(u => !u.aid).map(u => u.type), got = [];
     for (const t of c.need) {
       const i = have.indexOf(t); if (i >= 0) { have.splice(i, 1); continue; }
       const u = this.free(t)[0]; if (!u) continue;
@@ -66,6 +68,20 @@ const DISPATCH = {
       if (c.status === 'pending' || c.status === 'holding') c.status = 'dispatched';
     } else if (!c.units.length && c.status === 'pending') { c.status = 'holding'; RADIO.say('DISPATCH', radioLine(HOLD_LINES, { P: titleCase(CFG.townName) }), 'disp', 1); }
   },
+  /* the fire has got away from the first alarm: the neighbours' companies are called in (VISITORS), if an engine is free */
+  secondAlarm(c) {
+    const pool = VISITORS.filter(v => v.state === 'quarters' && !v.aidFor), aid = [];
+    for (const t of ALARM2_UNITS) { const i = pool.findIndex(v => v.type === t); if (i >= 0) aid.push(pool.splice(i, 1)[0]); }
+    const u = c.units.find(x => x.type === 'chief' && x.state === 'on_scene') || c.units.find(x => x.spec.svc === 'fire' && x.state === 'on_scene');
+    if (!u || !aid.some(v => v.type === 'engine')) return false;
+    c.second = true; c.aid = aid; c.aidT = 0; c.dwell += 60; c.scene.strike();
+    aid.forEach(v => { v.aidFor = c; });
+    const v = this.vars(c, u);
+    RADIO.say('CAD', `#${c.id}  2ND ALARM`, 'sys'); TERM.tones();
+    RADIO.say(u.radio, radioLine(ALARM2_LINES.strike, v), 'fire', 2);
+    RADIO.say('DISPATCH', radioLine(ALARM2_LINES.tone, Object.assign(v, { L: nameList(aid) })), 'disp', 2);
+    return true;
+  },
   vars(c, u) {
     const s = c.site, st = s.ax ? lineOf(s.ax, s.at).name : '', lz = lzFor(s);
     return { U: u && u.radio, T: c.type.name.toLowerCase(), A: titleCase(s.name), X: titleCase(s.cross || ''), N: c.id, D: c.detail, S: titleCase(st.split(' ')[0]), H: 'Memorial', P: titleCase(CFG.townName), Z: lz ? titleCase(lz.name) : '' };
@@ -79,25 +95,31 @@ const DISPATCH = {
     }
     // fill what calls still need as units come free
     this.fillT -= dt;
-    if (this.fillT <= 0) { this.fillT = 2; for (const c of this.open) if (c.status !== 'clearing' && c.units.length < c.need.length) this.assign(c); }
+    if (this.fillT <= 0) { this.fillT = 2; for (const c of this.open) if (c.status !== 'clearing' && c.units.filter(u => !u.aid).length < c.need.length) this.assign(c); }
     // the units' state changes
-    for (const L of [UNITS, HELIS]) for (const u of L) if (u.state !== u.cadState) { const f = u.cadState; u.cadState = u.state; this.onState(u, f, u.state); }
+    for (const L of [UNITS, HELIS, VISITORS]) for (const u of L) if (u.state !== u.cadState) { const f = u.cadState; u.cadState = u.state; this.onState(u, f, u.state); }
     // calls on scene: updates while working, then the units released one by one
     for (const c of this.calls) {
       if (c.status === 'closed') continue;
       const there = c.units.filter(u => u.callRef === c && (u.state === 'on_scene' || (u.state === 'away' && !u.homeQ))), ground = there.filter(u => !u.air);
+      if (c.strikeAt != null && T > c.strikeAt) c.strikeAt = c.status === 'onscene' && CFG.visitors && c.scene && !c.scene.out && !this.secondAlarm(c) ? T + 4 : null;   // (nobody from the fire service there yet, or no engine free: a little later)
+      if (c.aid && c.aid.length && (c.aidT -= dt) <= 0) {   // (the neighbours' companies come in one by one)
+        c.aidT = rand(2, 6);
+        if (c.status === 'clearing') { c.aid.forEach(v => { v.aidFor = null; }); c.aid = []; }
+        else if (c.aid[0].respond(c)) { const v = c.aid.shift(); RADIO.say('CAD', `${v.short}  DISP  #${c.id}`, 'sys'); if (Math.random() < 0.6) RADIO.say(v.radio, radioLine(ACK_LINES[v.spec.svc], this.vars(c, v)), v.spec.svc); }
+      }
       if (c.arrived != null && c.status === 'onscene') {
         if (T > c.nextUpdate && ground.length && c.updates < 2) {   // (the helicopters have their own: helis.js)
           c.updates++; c.nextUpdate = T + rand(30, 60);
           const u = ground.find(u => u.spec.svc === (c.type.svc === 'pd' ? 'pd' : 'fire')) || ground[0];
-          RADIO.say(u.radio, radioLine(UPDATE_LINES[u.spec.svc === 'pd' && c.type.svc !== 'pd' ? 'pd' : c.type.kind], this.vars(c, u)), u.spec.svc);
+          RADIO.say(u.radio, radioLine(c.second && !c.scene.out && u.spec.svc === 'fire' ? ALARM2_LINES.update : UPDATE_LINES[u.spec.svc === 'pd' && c.type.svc !== 'pd' ? 'pd' : c.type.kind], this.vars(c, u)), u.spec.svc);
         }
         if (T - c.arrived > c.dwell && (!c.scene || c.scene.ready)) { c.status = 'clearing'; c.relT = 0; }   // (a fire: once it is out)
       }
       if (c.status === 'clearing') {
         c.relT -= dt;
         if (c.relT <= 0 && there.length) {   // the chief clears last
-          const u = there.find(u => u.type !== 'chief') || there[0];
+          const u = there.find(u => u.aid) || there.find(u => u.type !== 'chief') || there[0];   // (the neighbours go first)
           if (u.aerialK > 0.01) { u.aerialWant = 0; c.relT = 1; }   // the aerial is bedded first
           else if (u.type === 'medic' && TRANSPORTS.has(c.type.kind) && !c.transported && Math.random() < 0.7) {   // the patient goes to the ER
             c.transported = true; const code3 = Math.random() < 0.25;
@@ -128,7 +150,9 @@ const DISPATCH = {
         c.arrived = T; c.status = 'onscene'; c.nextUpdate = T + rand(14, 26);
         RADIO.say(u.radio, radioLine(ON_SCENE[svc === 'pd' && c.type.svc !== 'pd' ? 'pd' : c.type.kind], v), svc, 1);
         if (c.type.air) { RADIO.say(u.radio, radioLine(REQ_AIR_LINES, v), svc, 1); c.need.push(c.type.air); }   // the first in asks for the helicopter
-      } else if (Math.random() < 0.5) RADIO.say(u.radio, radioLine(svc === 'pd' ? ON_SCENE.pd : ['{U} on scene.', '{U} arriving.'], v), svc);
+        if (c.strike) c.strikeAt = T + rand(14, 28);
+      } else if (u.aid) RADIO.say(u.radio, radioLine(svc === 'ems' ? ALARM2_LINES.arriveEms : ALARM2_LINES.arrive, v), svc);
+      else if (Math.random() < 0.5) RADIO.say(u.radio, radioLine(svc === 'pd' ? ON_SCENE.pd : ['{U} on scene.', '{U} arriving.'], v), svc);
     } else if (to === 'returning') {
       RADIO.say('CAD', `${u.short}  AVAIL`, 'sys');
       RADIO.say(u.radio, radioLine(CLEAR_LINES[svc], v), svc);
@@ -186,7 +210,7 @@ const TERM = {
     setCls(this.hdr, 'cad-hdr' + (T < this.toneUntil && Math.floor(T * 4) % 2 ? ' tone' : ''));
     const cls = u => u.callRef !== null && u.state === 'turnout' ? 'dsp' : u.state === 'responding' || u.state === 'pullout' ? 'enr' : u.state === 'on_scene' || u.state === 'away' ? 'osc' : 'avl';
     const html = DISPATCH.calls.filter(c => c.status !== 'closed' || T - c.closedAt < 6).slice(-3).reverse().map(c =>
-      `<div class="card ${c.status}"><div><b>#${c.id}</b><i>${c.type.name}</i><s>${CALL_STATUS[c.status]}</s></div><div class="a">${escHtml(c.site.name + (c.site.cross && !c.site.name.includes(c.site.cross) ? ' · ' + c.site.cross : ''))}</div><div class="us">${c.units.map(u => `<span class="${u.callRef === c ? cls(u) : 'clr'}">${u.short}</span>`).join('')}</div></div>`).join('');
+      `<div class="card ${c.status}"><div><b>#${c.id}</b><i>${callName(c)}</i><s>${CALL_STATUS[c.status]}</s></div><div class="a">${escHtml(c.site.name + (c.site.cross && !c.site.name.includes(c.site.cross) ? ' · ' + c.site.cross : ''))}</div><div class="us">${c.units.map(u => `<span class="${u.callRef === c ? cls(u) : 'clr'}">${u.short}</span>`).join('')}</div></div>`).join('');
     if (html !== this.cardsHtml) { this.cardsHtml = html; this.callsEl.innerHTML = html; }
   }
 };

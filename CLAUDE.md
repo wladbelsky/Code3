@@ -17,7 +17,7 @@ dispatch board), the splash and the settings drawer to match — done (see "Pane
 preview GIF, screenshots, README — done; left: the Workshop upload (by hand, from WE) and GitHub Pages for the live demo.
 **After stage 9** (approved, in this order): civilian headlights at night — done; drills at the station in quiet hours —
 done; routine vehicles (school bus, garbage truck, delivery van) — done; weather (rain / fog, wet reflections, more crashes) — done;
-2nd-alarm fires with the neighbouring districts' units joining; a police pursuit with Air 1; pedestrians **last, as a
+2nd-alarm fires with the neighbouring districts' units joining — done; a police pursuit with Air 1; pedestrians **last, as a
 concept first** (a basic model, screenshots and a performance measurement before building it out). Also: in the browser
 the ⚙ Settings button overlaps the CAD terminal (radio log) — move one of them.
 Original work in the genre: no names, logos, models or assets of existing games or real departments; the town is
@@ -57,7 +57,7 @@ fictional (default FAIRHAVEN).
 
 ## Rules / conventions
 - **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in
-  `index.html` (WE's CEF caches aggressively). Current: `v=17`.
+  `index.html` (WE's CEF caches aggressively). Current: `v=18`.
 - **New WE property**: add it to `project.json`, read it in `applyUserProperties` (`main.js`) into `CFG`,
   then run `python tools/gen_properties.py`. Property `order` decides the browser-drawer group
   (0–9 camera/time, 10–19 audio/calls, 20–29 terrain & season, 30–39 panel & terminal, 40–49 units, 50–59 town).
@@ -130,6 +130,14 @@ fictional (default FAIRHAVEN).
   At once `1 + floor(LOAD × 2.6)`, one every `lerp(200, 25, LOAD)` s × rand. **`MOVERS`** = units + visitors: everything
   physical (following, giving way, crossings, cars pulling over, the harness's overlaps) iterates `MOVERS`; the CAD, the
   zones and the board iterate `UNITS`.
+- **Second alarm** (`DISPATCH.secondAlarm`, `ALARM2_UNITS`, `ALARM2_LINES`): a structure fire is marked at the call
+  (`strike`: 25 … 70 % with the load); 14–28 s after the first arrival command strikes it, if `visitors` is on and a
+  neighbour's engine is free. `c.aid` = the free visitors of 2 engines, a ladder, a medic (`aidFor` reserves them), sent in
+  one by one (`Visitor.respond`: off the screen to the nearest free curb on either side — `freeSlot(c, u, true)`, none free: it waits — code 3); they join `c.units` with `aid` set (the card's
+  chips, `onState` — `DISPATCH.update` also watches `VISITORS` — but not what the call still `need`s, nor the board), are
+  released first, and leave off the screen (`Visitor.goHome`). The scene (`strike`, `big`, `bigK`) flares until a
+  neighbour is working (at most 150 s), three more emitters, each stream worth half; up to three engine lines (`yards` /
+  `targets` / `crews`) and two aerials (a neighbour's only within 34 m).
 - **Drills** (`DRILLS`, `units.js`; state `drill`, tile 'Training'): with the load < 0.2 and calls on, every 3–6 min a
   free fire / EMS unit with a bay rolls out onto the apron in front of it (`spot`: its tail just clear of the door), works
   80–140 s — the engine's deck gun straight up (`pump`), the ladder's aerial raised (`aerial`), the rescue / medics washed

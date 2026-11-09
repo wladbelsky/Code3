@@ -539,7 +539,7 @@ const DRILLS = {
    as the town's units do (code 3: the cars pull over, the centre line, slowly through a red); more of them, and more
    often, the higher the LOAD. Property `visitors`. ===== */
 const VISITOR_ROSTER = [['engine', 'ENGINE 31', 'county'], ['rescue', 'RESCUE 31', 'county'], ['medic', 'MEDIC 41', 'ambulance'], ['medic', 'MEDIC 43', 'ambulance'],
-  ['patrol', 'SHERIFF 7', 'sheriff'], ['patrol', 'SHERIFF 9', 'sheriff'], ['patrol', 'SHERIFF 12', 'sheriff']];
+  ['patrol', 'SHERIFF 7', 'sheriff'], ['patrol', 'SHERIFF 9', 'sheriff'], ['patrol', 'SHERIFF 12', 'sheriff'], ['engine', 'ENGINE 34', 'county'], ['ladder', 'TRUCK 33', 'county']];
 let VISITORS = [];
 const _ve = new V3();
 /* a street end off the screen: the first 25 m step past the screen's edge ({ ax, at, a, sg: the side of town }) */
@@ -551,25 +551,45 @@ function offEnd() {
 /* in off the screen on one street, out on another (null: the same street, or no way) */
 function throughWay(o) {
   const s = offEnd(), e = offEnd(); if (s.ax === e.ax && s.at === e.at) return null;
-  const inDir = s.ax === 'ew' ? (s.sg > 0 ? 'W' : 'E') : (s.sg > 0 ? 'N' : 'S'), outDir = e.ax === 'ew' ? (e.sg > 0 ? 'E' : 'W') : (e.sg > 0 ? 'S' : 'N');
-  return ROADS.way({ ax: s.ax, at: s.at, a: s.a, dirs: [inDir] }, { ax: e.ax, at: e.at, a: e.a, dir: outDir }, null, null, o);
+  return ROADS.way(endIn(s), endOut(e), null, null, o);
 }
+const endIn = s => ({ ax: s.ax, at: s.at, a: s.a, dirs: [s.ax === 'ew' ? (s.sg > 0 ? 'W' : 'E') : (s.sg > 0 ? 'N' : 'S')] });   // (a street end: coming in from it)
+const endOut = e => ({ ax: e.ax, at: e.at, a: e.a, dir: e.ax === 'ew' ? (e.sg > 0 ? 'E' : 'W') : (e.sg > 0 ? 'S' : 'N') });      // (going out by it)
 class Visitor extends Unit {
   constructor(type, cs, liv, i) { super(type, cs, null, i, liv); this.model.group.visible = false; }
   makeHome() { return { kind: 'none', x: 0, z: -2000, h: 0 }; }
   get zoneOut() { return null; }
   get zoneIn() { return null; }
-  /* on its way across town (false: no clear start) */
-  run() {
-    const w = throughWay(Object.assign(this.runOpts(true), { vEnd: this.spec.vmax })); if (!w) return false;
+  /* on the road along way w, code 3 (false: its start is not clear) */
+  enter(w, call) {
     const p = w.at(0, _ua);
     if ([...MOVERS, ...CIVS].some(o => o !== this && o.model.group.visible && Math.hypot(o.pos.x - p.x, o.pos.z - p.z) < 40)) return false;
-    this.state = 'responding'; this.lights = true; this.t = 0; this.call = { far: true }; this.latOff = 0; this.blockT = 0;
+    this.state = 'responding'; this.lights = true; this.t = 0; this.call = call; this.latOff = 0; this.blockT = 0;
     this.model.group.visible = true; this.yaw = null; this.place(p.x, p.z, p.h, false); this.v = p.v * 0.8;
     this.go([{ way: w }]);
     return true;
   }
-  arrive() { this.state = 'quarters'; this.lights = false; this.call = null; this.v = 0; this.model.group.visible = false; this.place(this.home.x, this.home.z, 0, false); }
+  /* on its way across town */
+  run() { const w = throughWay(Object.assign(this.runOpts(true), { vEnd: this.spec.vmax })); return !!w && this.enter(w, { far: true }); }
+  /* a second alarm: in off the screen to a curb of the call, on the call's card like the town's units */
+  respond(c) {
+    const k = DISPATCH.freeSlot(c, this, true); if (k < 0) return false;   // (the curb is full: it waits off the screen)
+    const d = siteDest(c.site, k), w = ROADS.way(endIn(offEnd()), { ax: d.ax, at: d.at, a: d.a, dir: d.dir }, null, [d.curb], this.runOpts(true));
+    if (!w || !this.enter(w, d)) return false;
+    this.callRef = c; this.aid = true; c.units.push(this);
+    return true;
+  }
+  /* released: off the screen by another street */
+  goHome() {
+    const [from, pre] = this.fromCall(), o = { vmax: this.spec.vmax * 0.7, alat: this.spec.alat };
+    let w = null; for (let n = 0; n < 6 && !w; n++) w = ROADS.way(from, endOut(offEnd()), pre, null, o);
+    if (!w) return;
+    this.state = 'returning'; this.lights = false; this.go([{ way: w }]); this.firstWay = this.way; this.waitS = Infinity;   // (firstWay: it waits for a gap to pull away, as the town's do)
+  }
+  arrive() {
+    if (this.state === 'responding' && this.callRef) return super.arrive();   // (on scene)
+    this.state = 'quarters'; this.lights = false; this.call = null; this.callRef = null; this.aid = false; this.aidFor = null; this.v = 0; this.model.group.visible = false; this.place(this.home.x, this.home.z, 0, false);
+  }
 }
 const VISITS = {
   timer: 30, passed: 0,
@@ -579,8 +599,8 @@ const VISITS = {
     for (const v of VISITORS) v.update(dt);
     if ((this.timer -= dt) > 0) return;
     this.timer = lerp(200, 25, LOAD.level) * rand(0.6, 1.4);
-    const free = VISITORS.filter(v => v.state === 'quarters');
-    if (VISITORS.length - free.length >= this.wanted() || !free.length) return;
+    const free = VISITORS.filter(v => v.state === 'quarters' && !v.aidFor);   // (not those called in on a second alarm)
+    if (VISITORS.filter(v => v.state !== 'quarters' && !v.callRef).length >= this.wanted() || !free.length) return;
     const v = pick(free); for (let n = 0; n < 4; n++) if (v.run()) { this.passed++; return; }
     this.timer = 3;   // (every street end busy with traffic: try again shortly)
   }

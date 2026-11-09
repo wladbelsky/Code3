@@ -120,7 +120,7 @@ class Civ {
       if (Math.abs(along) < 12) curb = true;
       const need = r + this.wid / 2 + 0.3; if (lat < need) shift = Math.max(shift, need - lat);
     };
-    for (const u of UNITS) if (u.state === 'on_scene' && !u.way && u.model.group.visible) test(u.pos.x, u.pos.z, u.wid / 2);
+    for (const u of MOVERS) if (u.state === 'on_scene' && !u.way && u.model.group.visible) test(u.pos.x, u.pos.z, u.wid / 2);
     for (const p of PROPS.cars) if (p.used) test(p.g.position.x, p.g.position.z, 2.4);
     for (const o of CIVS) if (o !== this && o.atStop && ROUTINE[o.kind].aside) test(o.pos.x, o.pos.z, o.wid / 2);
     for (const p of PROPS.burnt) if (p.used) test(p.g.position.x, p.g.position.z, 1.1);

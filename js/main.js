@@ -300,7 +300,7 @@ function updateUI() {
     setTxt(u.tile.st, u.air && u.state === 'quarters' ? 'On pad' : lab); setCls(u.tile.el, 'tile ' + u.spec.svc + ' ' + cls);
   }
   const open = DISPATCH.calls.filter(c => c.status !== 'closed').slice(-3).reverse();
-  const html = open.length ? open.map(c => `<div class="cc ${c.status}"><div class="c1"><b>${escHtml(c.type.name)}</b><s>${CALL_STATUS[c.status]}</s></div>` +
+  const html = open.length ? open.map(c => `<div class="cc ${c.status}"><div class="c1"><b>${escHtml(callName(c))}</b><s>${CALL_STATUS[c.status]}</s></div>` +
     `<div class="c2">${escHtml(c.site.name)} <span class="num">#${c.id}</span></div><div class="c3">${c.units.filter(u => u.callRef === c).map(u => u.short).join(' ') || '—'} · ${Math.floor((T - c.t) / 60)} min</div></div>`).join('')
     : '<div class="none">No active calls</div>';
   if (html !== cardsHtml) { cardsHtml = html; uiEl('callcards').innerHTML = html; }
