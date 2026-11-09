@@ -57,7 +57,7 @@ fictional (default FAIRHAVEN).
 
 ## Rules / conventions
 - **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in
-  `index.html` (WE's CEF caches aggressively). Current: `v=20`.
+  `index.html` (WE's CEF caches aggressively). Current: `v=21`.
 - **New WE property**: add it to `project.json`, read it in `applyUserProperties` (`main.js`) into `CFG`,
   then run `python tools/gen_properties.py`. Property `order` decides the browser-drawer group
   (0–9 camera/time, 10–19 audio/calls, 20–29 terrain & season, 30–39 panel & terminal, 40–49 units, 50–59 town).
@@ -252,8 +252,12 @@ fictional (default FAIRHAVEN).
   other's way, not its body (`bodyBlocked`); one whose way another's body blocks cannot lead. Standing 6 s (`stillSince`), it takes the slow units within 20 m by their bodies alone,
   centre to centre (as they really fit — no to and fro over who is first). A car closer than its margin behind whoever is
   ahead stands (no creeping on at their pace).
+- **Crossings between units are booked** (`claim`, `crossCap`): from its stopping distance + 6 m (≥ 10) a unit books the crossing for its move, the first in range has it, and whoever crosses that move waits at the line. Decided once and early: by arrival times alone each side flipped at the last moment, both too close to stop. Standing 3 s outside the box it holds no booking (moving off, it books anew, behind whoever booked meanwhile). Within `yieldCap`'s ties, one that can no longer stop short of the meeting goes first.
+- **Don't block the box**: a unit waits at the line while something stands in its lane just past the crossing (it would stand in the cross traffic's way: a ring of waits).
+- **Rolling out onto a street** (bay, lot, driveway): 5 m/s at the curb line, giving way to anything coming along the street (a unit within ~3.5 s). **Turning left off a street** (a driveway, the lane up to the yard): gives way to whatever comes the other way within 5 s, until 8.5 m from the turn.
+- **Left turns and the centre line**: a unit does not go out to pass a car about to turn left at its next crossing (`turnerAhead`); a car in the lane does not start a turn across a unit out on the centre line beside it (`unitDue`, `outBy`), even one that waits for that car. A car halfway round something at the curb gets by before it pulls over, and stays out beside a car pulled over there; a van whose stop is over still looks behind before it comes out (`comingBy`).
 - **Safety net** (`TRAFFIC.tidy`, every 2 s): a unit that has not got 3 m on its way in 25 s while it and a car wait for
-  each other (`yieldTo`, `blocker`, or the box it waits at for that unit: `boxFor`) — or the car has stood 25 s giving way (a ring through other units): the car goes (`TRAFFIC.cleared`). Two units waiting for each other 20 s: one of them, turn about, takes the other for 6 s by its centre alone (`ghost`, `TRAFFIC.unstuck`: its way ignored, never its centre). The rules untangle nearly all standoffs; this is for the rare rest.
+  each other (`yieldTo`, `blocker`, or the box it waits at for that unit: `boxFor`) — or the car has stood 25 s giving way (a ring through other units): the car goes (`TRAFFIC.cleared`). Two units waiting for each other 20 s: one of them, turn about, takes the other for 6 s by its centre alone (`ghost`, `TRAFFIC.unstuck`: its way ignored, never its centre). Taking turns has not helped: the one with room behind it backs a few metres (`roomBehind`, `backUntil`). Anyone waiting 75 s for another mover (a knot of several): a car it waits for goes, a unit is taken by its centre. The rules untangle nearly all standoffs; this is for the rare rest.
 - **Obstacles** at the curb (units on scene, wrecks, burnt cars): a car eases left round them, slowly.
 - **Routine vehicles** (`ROUTINE`; `Civ` with a `kind`: their own models `busModel` / `garbageModel` / `deliveryModel`,
   warning lights as `bars`): one of each in the pool, set out by the hour (the bus 7–8:45 and 14:30–16:30, the garbage

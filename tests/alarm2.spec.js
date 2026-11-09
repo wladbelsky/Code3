@@ -20,8 +20,9 @@ test('a second alarm: the fire flares up, the neighbours come in off the screen,
     return { curb: aid.filter(u => u.state === 'on_scene').every(u => Math.hypot(u.pos.x - u.call.curb[0], u.pos.z - u.call.curb[1]) < 1), hidden: aid.some(u => !u.model.group.visible), chips: aid.every(u => TERM.cardsHtml.includes(u.short) || c.units.length > 8), big: c.scene.big };
   });
   expect(r).toMatchObject({ curb: true, hidden: false, big: true });
-  await wp.sim(10);
-  expect(await wp.run(() => DISPATCH.calls[0].scene.crews.filter(i => i != null).length)).toBeGreaterThan(1);
+  const two = await wp.until(() => DISPATCH.calls[0].units.filter(u => u.type === 'engine' && u.state === 'on_scene' && u.t > 7).length >= 2, 150);   // (the second alarm's own engine at work)
+  expect(two.done, 'two engines working').toBe(true);
+  expect(await wp.run(() => DISPATCH.calls[0].scene.out || DISPATCH.calls[0].scene.crews.filter(i => i != null).length > 1)).toBe(true);
   const out = await wp.until(() => DISPATCH.calls[0].scene.out, 300);
   expect(out.violations).toEqual([]);
   expect(out.done, 'knocked down').toBe(true);

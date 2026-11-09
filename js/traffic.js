@@ -122,8 +122,9 @@ class Civ {
     };
     for (const u of MOVERS) if (u.state === 'on_scene' && !u.way && u.model.group.visible) test(u.pos.x, u.pos.z, u.wid / 2);
     for (const p of PROPS.cars) if (p.used) test(p.g.position.x, p.g.position.z, 2.4);
-    for (const o of CIVS) if (o !== this && o.atStop && ROUTINE[o.kind].aside) test(o.pos.x, o.pos.z, o.wid / 2);
+    for (const o of CIVS) if (o !== this && o.on && ROUTINE[o.kind] && ROUTINE[o.kind].aside && (o.atStop || (o.lat > 0.3 && o.v < 1))) test(o.pos.x, o.pos.z, o.wid / 2);   // (a van still over at the curb, its stop just over)
     for (const p of PROPS.burnt) if (p.used) test(p.g.position.x, p.g.position.z, 1.1);
+    if (this.lat < -0.3) for (const o of CIVS) if (o !== this && o.on && o.lat > 0.6 && o.v < 1 && Math.abs((o.pos.x - this.pos.x) * c + (o.pos.z - this.pos.z) * s) < 6) test(o.pos.x, o.pos.z, o.wid / 2);   // (out round something: not back in beside a car pulled over)
     // a driveway or a gate at its right (the curb it would pull over onto): not there
     const rx = this.pos.x - s * 3.5, rz = this.pos.z + c * 3.5;
     if (CITY.drives.some(r => rx > r[0] - 6 && rx < r[2] + 6 && rz > r[1] - 6 && rz < r[3] + 6)) curb = true;
@@ -186,7 +187,8 @@ class Civ {
       const uw = u.way; if (!uw || uw.rev || !u.model.group.visible) continue;
       const ub = (uw.boxes || (uw.boxes = wayBoxes(uw))).find(x => x.key === b.key && uw.s - u.len / 2 < x.s1), to = ub && ub.s0 - uw.s - u.len / 2;
       const go = !(u.held && u.waitKind === 'zone') && (!ub || !ub.sig || u.lights || CITY.signal(ub.axis) === 'g'), waits = u.yieldTo === this && this.yieldTo !== u;   // (code 1 coming up to a red: it will stop; one held for its zone stays put — not one held for this very box: it goes once it is clear)
-      if (ub && (to < 0 || (go && !waits && (to < 3 || (u.v > 1.5 && to / u.v < 3.5)))) && boxConflict(ub, b)) { this.boxFor = u; return true; }   // (one in the box: always; boxFor: whom it waits for — the safety net)
+      const outBy = ub && ub.hIn === b.hIn && (u.passing || u.latOff < -0.3) && !(ub.hIn === ub.hOut && b.hIn === b.hOut);   // (out on the centre line, the same way in, one of them turning: its path crosses the lane's)
+      if (ub && (to < 0 || (go && (!waits || outBy) && (to < 3 || (u.v > 1.5 && to / u.v < 3.5)))) && (boxConflict(ub, b) || outBy)) { this.boxFor = u; return true; }   // (one in the box: always; boxFor: whom it waits for — the safety net)
     }
     return false;
   }
@@ -231,10 +233,11 @@ class Civ {
         if (d < 0.6 && this.v < 0.3) { this.atStop = true; vt = 0; latT = R.lat; if ((this.dwellT += dt) > this.dwellNow && !(R.aside && this.comingBy())) { this.stops.shift(); this.dwellT = 0; this.dwellNow = rand(...R.dwell); } }   // (back out into the lane only with nobody coming up behind)
       }
     }
+    if (ROUTINE[this.kind] && ROUTINE[this.kind].aside && !this.atStop && this.lat > 0.3 && this.v < 1 && this.comingBy()) { vt = 0; latT = this.lat; }   // (its stop over, still at the curb: not out in front of whoever is coming)
     if (this.bars.length) this.flash(this.atStop || (this.kind === 'garbage' && this.stops && this.stops.length > 0 && inTown(this.pos)));
     // a code-3 unit coming: pull over and stop (or, with the curb taken, slow down) until it is by; not inside a box
     const u = this.siren();
-    this.pulled = !!u && !(this.boxIn && w.s + this.len / 2 > this.boxIn.s0);   // (its nose in the box: it clears it first) if (this.pulled) TRAFFIC.pulls++;
+    this.pulled = !!u && !(this.boxIn && w.s + this.len / 2 > this.boxIn.s0) && !(ob.shift > 0 && this.lat < -0.5);   // (halfway round something at the curb: it gets by first)   // (its nose in the box: it clears it first) if (this.pulled) TRAFFIC.pulls++;
     if (this.pulled) { if (ob.curb) { const out = this.lat > 0.3; vt = Math.min(vt, ob.shift > 0 || out ? 0 : 4); latT = Math.max(latT, out ? this.lat : 0); } else { latT = 1.2; vt = 0; } }   // (the curb taken: slow — already over toward it (a driveway come up), stay there and stand; no easing out round something there while the unit goes by on the centre line)
     const g = this.gapCap(), bx = this.boxCap(w, this.pulled && !ob.curb), y = this.unitCap();
     this.why = vt < 0.5 && this.pulled ? 'pull' : g < 0.5 ? 'gap' : bx < 0.5 ? 'box' : y < 0.5 ? 'yield' : '';
@@ -314,7 +317,14 @@ const TRAFFIC = {
         c.despawn(); this.cleared++; u.prog.t = T; }
       // two units each waiting for the other that long: the first in the roster ignores the other for 6 s (each is in the
       // other's way only by the body circles; centre to centre they fit — the tests' overlap check holds them to that)
-      const o = u.wait; if (T - u.prog.t > 20 && o instanceof Unit && o.wait === u && (u.i < o.i) === (this.unstuck % 2 === 0) && !(u.ghostUntil > T)) { u.ghost = o; u.ghostUntil = T + 6; this.unstuck++; u.prog.t = T; if (o.prog) o.prog.t = T; }   // (turn about: the first may be the one that cannot move)
+      // a knot of several that nothing above untied (the wallpaper runs for days: nobody may stand there for good): whoever it waits for goes
+      if (T - u.prog.t > 75 && u.waitKind === 'move' && u.wait) {
+        const k = u.wait; u.prog.t = T;
+        if (k instanceof Civ) { if (k.on) { k.despawn(); this.cleared++; } }
+        else if (k instanceof Unit) { u.ghost = k; u.ghostUntil = T + 6; this.unstuck++; if (u.roomBehind(8)) u.backUntil = T + 5; }
+        continue;
+      }
+      const o = u.wait; if (T - u.prog.t > 20 && o instanceof Unit && o.wait === u && (u.i < o.i) === (this.unstuck % 2 === 0) && !(u.ghostUntil > T)) { u.ghost = o; u.ghostUntil = T + 6; this.unstuck++; u.prog.t = T; if (o.prog) o.prog.t = T; if ((u.prog.n = (u.prog.n || 0) + 1) > 1 && u.roomBehind(8)) u.backUntil = T + 5; }   // (turn about: the first may be the one that cannot move)
     }
   }
 };
