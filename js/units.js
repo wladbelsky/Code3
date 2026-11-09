@@ -93,7 +93,7 @@ class Unit {
   go(legs) { this.legs = legs.filter(l => l.way); this.next(); }
   next() {
     const l = this.legs.shift(); this.way = l ? l.way : null; this.leg = l || null;
-    if (this.way) { this.way.s = 0; if (this.way.rev !== this.rev) this.v = 0; }
+    if (this.way) { this.way.s = 0; this.stillSince = T; if (this.way.rev !== this.rev) this.v = 0; }
   }
   /* send it to a place on a street ({ ax, at, a, dir, curb: [x, z] }) or out of town ({ far: { ax, at, a, dir } }) */
   dispatch(dest) {
@@ -212,7 +212,7 @@ class Unit {
   }
   drive(dt) {
     const w = this.way, p = w.at(w.s, _ua);
-    if (this.backUntil > T && w.s > 0.5) { this.v = 0; this.held = true; w.s = Math.max(0, w.s - 1.6 * dt); w.at(w.s, _ua); this.place(_ua.x, _ua.z, _ua.h, w.rev, dt); return; }   // (the safety net: a few metres back along its way)
+    if (this.backUntil > T && w.s > 0.5) { this.v = 0; this.held = true; w.s = Math.max(0, w.s - 1.6 * dt); const q = this.wayAt(w, 0); this.place(q.x, q.z, q.h, w.rev, dt); return; }   // (the safety net: a few metres back along its way)
     let vt = p.v, wait = null, kind = null;
     if (!w.rev) {
       const g = this.gapCap(), y = this.yieldCap(w), x = this.crossCap(w);
@@ -442,13 +442,13 @@ class Unit {
       const stop = k - this.len / 2 - 1;                 // the front 1 m short of the box: behind the stop line
       // another unit in the box on a move across this one (and not giving way to it), or a car in it (or that can no longer
       // stop short of it): wait at the line — or where it stands, its nose over it but itself not in yet
-      const key = x + ',' + z, my = stop > -this.len && (w.boxes || (w.boxes = wayBoxes(w))).find(b => b.key === key && w.s - this.len / 2 < b.s1);
+      const key = x + ',' + z, my = (w.boxes || (w.boxes = wayBoxes(w))).find(b => b.key === key && w.s - this.len / 2 < b.s1);
       // a crossing is booked from the unit's stopping distance: the first one in range has it, whoever crosses that move waits at
       // the line — decided once, early (who gives way by the arrival times flips at the last moment, with both too close to stop).
       // A booking of one standing outside the box (waiting for something else) does not hold anyone up.
       // no way out on the far side (a queue standing right after the crossing): not into it — standing in it, it would hold up the cross traffic
       if (my && stop > 0 && stop < Math.max(14, this.v * this.v / 8 + 8) && my.s1 + this.len / 2 + 2 < w.len) {
-        const e = w.at(my.s1 + this.len / 2 + 2, _ub), R = this.wid / 2 + 0.9;
+        const e = w.at(my.s1 + this.len / 2 + 2, _uc), R = this.wid / 2 + 0.9;   // (_uc: p, in _ub, still decides which light is its own below)
         if ([...MOVERS, ...CIVS].some(o => o !== this && o.model.group.visible && o.v < 1 && !(o.lat > 0.6) && o.state !== 'on_scene' && o.state !== 'quarters' && Math.hypot(o.pos.x - e.x, o.pos.z - e.z) < R + o.len / 2 && Math.cos(o.pos.h - e.h) > 0.7)) return Math.sqrt(2 * 3 * Math.max(0, stop));
       }
       if (my && stop > -this.len / 2 && stop < Math.max(10, this.v * this.v / 8 + 6)) {
@@ -464,7 +464,7 @@ class Unit {
         const ob = (o.way.boxes || (o.way.boxes = wayBoxes(o.way))).find(b => b.key === key && o.way.s - o.len / 2 < b.s1);
         if (ob && boxConflict(ob, my)) { this.yieldTo = this.yieldTo || o; return Math.sqrt(2 * 3 * Math.max(0, stop)); }
       }
-      if (my) for (const o of CIV_BOXES.get(key) || []) if (o.boxIn && (o.yieldTo !== this || o.v > 3) && o.way.s + o.len / 2 > o.boxIn.s0 - o.v * o.v / 10 - 1 && boxConflict(o.boxIn, my)) { this.yieldTo = this.yieldTo || o; return Math.sqrt(2 * 3 * Math.max(0, stop)); }   // (a car in it or past stopping, too)   // (a car in the box: until half its length is in, braking for it from code 3 — not one that waits for this unit's body: it clears out)
+      if (my) for (const o of CIV_BOXES.get(key) || []) if (o.boxIn && (o.yieldTo !== this || o.v > 3) && o.way.s + o.len / 2 > o.boxIn.s0 - o.v * o.v / 10 - 1 && boxConflict(o.boxIn, my)) { this.yieldTo = this.yieldTo || o; return Math.sqrt(2 * 3 * Math.max(0, stop)); }   // (a car in it or past stopping, too: till this unit's tail is out of the box, braking for it from code 3 — not one that waits for this unit's body: it clears out)
       if (stop < -1.5) return Infinity;                  // already over the line: clear out
       const sig = CITY_LAYOUT.signals.some(s => s[0] === x && s[1] === z), axis = Math.abs(Math.cos(p.h)) > Math.abs(Math.sin(p.h)) ? 'ew' : 'ns';
       const light = sig ? CITY.signal(axis) : 'g', red = sig && (light === 'r' || (light === 'y' && this.v * this.v / 9 < stop));
@@ -540,7 +540,7 @@ const DRILLS = {
     if (u.model.aerial) u.aerialWant = 0;
     this.ph = 'bed';
   },
-  needed(u) { return DISPATCH.open.some(c => c.need.filter(t => t === u.type).length > c.units.filter(x => x.type === u.type).length); },
+  needed(u) { return DISPATCH.open.some(c => c.need.filter(t => t === u.type).length > c.units.filter(x => x.type === u.type && !x.aid).length); },
   update(dt) {
     const u = this.unit;
     if (!u) {
@@ -572,7 +572,7 @@ const DRILLS = {
     }
     if (this.ph === 'bed' && !(u.aerialK > 0.01)) {   // (bedded: back in, the crew aboard)
       this.dropCrew(); this.ph = 'in';
-      u.go([{ way: new Way([[H.x, z1], [H.x, H.z]], { rev: true, vmax: 1.6, r: 5 }) }]);
+      u.go([{ way: new Way([[H.x, u.pos.z], [H.x, H.z]], { rev: true, vmax: 1.6, r: 5 }) }]);   // (from where it stands: a call can end the drill while it is still rolling out)
     }
     if (this.ph === 'in' || this.ph === 'out') H.bay.door.want = 1;
   }

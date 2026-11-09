@@ -120,7 +120,7 @@ class Civ {
       if (Math.abs(along) < 12) curb = true;
       const need = r + this.wid / 2 + 0.3; if (lat < need) shift = Math.max(shift, need - lat);
     };
-    for (const u of MOVERS) if (u.state === 'on_scene' && !u.way && u.model.group.visible) test(u.pos.x, u.pos.z, u.wid / 2);
+    for (const u of MOVERS) if (u.model.group.visible && ((u.state === 'on_scene' && !u.way) || (u.way && u.way === u.firstWay && u.way.s < 8 && u.v < 1.5))) test(u.pos.x, u.pos.z, u.wid / 2);   // (standing on scene, or just pulling away from the curb)
     for (const p of PROPS.cars) if (p.used) test(p.g.position.x, p.g.position.z, 2.4);
     for (const o of CIVS) if (o !== this && o.on && ROUTINE[o.kind] && ROUTINE[o.kind].aside && (o.atStop || (o.lat > 0.3 && o.v < 1))) test(o.pos.x, o.pos.z, o.wid / 2);   // (a van still over at the curb, its stop just over)
     for (const p of PROPS.burnt) if (p.used) test(p.g.position.x, p.g.position.z, 1.1);
@@ -145,7 +145,7 @@ class Civ {
       if (o === this || !o.model.group.visible || (L === MOVERS && (o.state === 'quarters' || (o.state === 'on_scene' && !o.way)))) continue;
       const dx = o.pos.x - this.pos.x, dz = o.pos.z - this.pos.z, along = dx * c + dz * s, lat = Math.abs(-dx * s + dz * c);
       const dh = Math.abs(angleWrap(o.pos.h - this.pos.h));   // (one pulling out into the lane at an angle counts as in it)
-      if (along <= 0 || along > 50 || lat > (this.wid + o.wid) / 2 + 0.1 + (dh > 0.15 && o.v > 0.3 ? 1.5 : 0) || dh > 1.6) continue;   // (not oncoming: crossing paths are the boxes' and the units' business)
+      if (along <= 0 || along > 50 || lat > (this.wid + o.wid) / 2 + 0.1 + (dh > 0.15 && o.v > 0.3 ? 1.5 : 0) + (L === MOVERS && o.latOff < -0.3 && o.way && o.way.len - o.way.s < 35 ? 0.8 : 0) || dh > 1.6) continue;   // (not oncoming: crossing paths are the boxes' and the units' business)
       const gap = along - (this.len + o.len) / 2 - 2.5, ov = o.v * Math.cos(o.pos.h - this.pos.h);
       const k = gap < -1 ? 0 : ov >= 0 ? Math.sqrt(7 * (Math.max(0, gap) + ov * ov / 10)) : Math.max(0, Math.sqrt(7 * Math.max(0, gap)) + ov);   // (closer than the margin already: stand — not creep on at its pace)
       if (k < cap) { cap = k; this.blocker = o; }
@@ -239,6 +239,10 @@ class Civ {
     const u = this.siren();
     this.pulled = !!u && !(this.boxIn && w.s + this.len / 2 > this.boxIn.s0) && !(ob.shift > 0 && this.lat < -0.5);   // (halfway round something at the curb: it gets by first)   // (its nose in the box: it clears it first) if (this.pulled) TRAFFIC.pulls++;
     if (this.pulled) { if (ob.curb) { const out = this.lat > 0.3; vt = Math.min(vt, ob.shift > 0 || out ? 0 : 4); latT = Math.max(latT, out ? this.lat : 0); } else { latT = 1.2; vt = 0; } }   // (the curb taken: slow — already over toward it (a driveway come up), stay there and stand; no easing out round something there while the unit goes by on the centre line)
+    if (!ob.shift) for (const o of MOVERS) if (o.latOff < -0.3 && o.model.group.visible && Math.cos(o.pos.h - this.pos.h) < -0.8) {   // (a unit coming the other way out on the centre line: room for it)
+      const ca = Math.cos(this.pos.h), sa = Math.sin(this.pos.h), dx = o.pos.x - this.pos.x, dz = o.pos.z - this.pos.z, along = dx * ca + dz * sa;
+      if (along > -8 && along < 35 && Math.abs(-dx * sa + dz * ca) < 5) { latT = Math.max(latT, 0.6); break; }
+    }
     const g = this.gapCap(), bx = this.boxCap(w, this.pulled && !ob.curb), y = this.unitCap();
     this.why = vt < 0.5 && this.pulled ? 'pull' : g < 0.5 ? 'gap' : bx < 0.5 ? 'box' : y < 0.5 ? 'yield' : '';
     vt = Math.min(vt, g, bx, y);

@@ -124,7 +124,7 @@ const TERRAIN = {
   buildWeather(season) {
     const kind = season === 'winter' ? 'snow' : season === 'autumn' ? 'leaves' : null;
     if (!this.weather) {
-      const n = 900, g = new THREE.BufferGeometry();
+      const n = 2800, g = new THREE.BufferGeometry();   // (room for the heaviest snowfall: ~345 flakes/s, ~8 s in the air)
       g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3).setUsage(THREE.DynamicDrawUsage));
       g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3), 3).setUsage(THREE.DynamicDrawUsage));
       const mat = new THREE.PointsMaterial({ size: 3, map: TEX.soft, vertexColors: true, transparent: true, depthWrite: false, sizeAttenuation: false, opacity: 0.9 });
@@ -140,7 +140,7 @@ const TERRAIN = {
     const on = w.kind && CFG.weather; w.pts.visible = !!on;
     if (!on) return;
     const P = w.pts.geometry.attributes.position.array, C = w.pts.geometry.attributes.color.array, snow = w.kind === 'snow';
-    w.acc += dt * (snow ? 220 * (1 + 2 * WEATHER.rain) : 26);   // (heavier in the winter's "rain")
+    w.acc += dt * (snow ? 115 * (1 + 2 * WEATHER.rain) : 26);   // (heavier in the winter's "rain")
     while (w.acc > 1) {
       w.acc--; const i = w.next; w.next = (w.next + 1) % w.n;
       const p = VIEW.groundAt(rand(-1.15, 1.15), rand(-1.2, 1.3), 0);
@@ -168,7 +168,7 @@ const WUP_T = new V3(0, 1, 0), VEG_SCALE = 3.2;   // the vegetation was made for
    beams brighter); the dispatcher has more crashes in the rain. The rain: streaks falling round the screen centre — one
    LineSegments, a fixed pool of drops, as many drawn as the rain is heavy. ===== */
 const RAIN_N = 1600, WET_BARS = 32, _wv = new V3(), _wm = new THREE.Matrix4(), _wc = new THREE.Color(), _ws = new V3(), _wp = new V3();
-const WET_D = new V3(-Math.SQRT1_2, 0, Math.SQRT1_2), _wq = new THREE.Quaternion().setFromAxisAngle(new V3(0, 1, 0), -Math.atan2(WET_D.z, WET_D.x));   // (a reflection runs toward the camera: down the screen)
+const WET_D = new V3(), _wq = new THREE.Quaternion();   // (a reflection runs toward the camera, down the screen: WEATHER.aimWet)
 const WEATHER = {
   kind: 'clear', rain: 0, fog: 0, timer: rand(300, 1200), mesh: null, drops: null, film: null, lamps: null, bars: null,
   build() {
@@ -188,7 +188,6 @@ const WEATHER = {
     const sg = new THREE.PlaneGeometry(1, 1); sg.rotateX(-Math.PI / 2);
     const smear = c => new THREE.MeshBasicMaterial({ map: TEX.soft, color: c, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
     this.lamps = new THREE.InstancedMesh(sg, smear(0xffb870), CITY.pools.length);
-    CITY.pools.forEach(([x, z], i) => this.lamps.setMatrixAt(i, _wm.compose(_wp.set(x + WET_D.x * 6, 0.058, z + WET_D.z * 6), _wq, _ws.set(12, 1, 3.4))));
     this.bars = new THREE.InstancedMesh(sg, smear(0xffffff), WET_BARS); this.bars.count = 0; this.bars.setColorAt(0, _wc.setHex(0xffffff));
     for (const o of [this.lamps, this.bars]) { o.frustumCulled = false; o.renderOrder = 1; o.visible = false; scene.add(o); }
   },
@@ -196,16 +195,24 @@ const WEATHER = {
     const h = getNow().getHours(), r = Math.random();
     return r < 0.22 ? 'rain' : r < 0.36 && h >= 4 && h < 11 ? 'fog' : 'clear';
   },
+  /* the reflections run toward the camera: aimed again whenever it has turned (property camerarotate) */
+  aimWet() {
+    this.az = camAz; WET_D.set(Math.cos(camAz), 0, Math.sin(camAz)); _wq.setFromAxisAngle(WUP_T, -camAz);
+    CITY.pools.forEach(([x, z], i) => this.lamps.setMatrixAt(i, _wm.compose(_wp.set(x + WET_D.x * 6, 0.058, z + WET_D.z * 6), _wq, _ws.set(12, 1, 3.4))));
+    this.lamps.instanceMatrix.needsUpdate = true;
+  },
   wetRoads() {
     const w = ENV.wet, on = w > 0.02, B = this.bars;
     this.film.visible = this.lamps.visible = B.visible = on; if (!on) return;
+    if (this.az !== camAz) this.aimWet();
     this.film.material.opacity = 0.42 * w;
     this.lamps.material.opacity = 0.42 * w * ENV.lightsOn;
     B.material.opacity = 0.6 * w * lerp(0.45, 1, ENV.night);
     let n = 0;
     for (const u of MOVERS) if (u.lastFlash >= 0 && u.model.bars.length && u.model.group.visible && n < WET_BARS) {
       B.setMatrixAt(n, _wm.compose(_wp.set(u.pos.x + WET_D.x * 5, 0.06, u.pos.z + WET_D.z * 5), _wq, _ws.set(14, 1, 5.5)));
-      B.setColorAt(n++, _wc.setHex(u.lastFlash ? 0x2a58ff : 0xff2a20));
+      const seg = u.model.bars.find(b => b.ph === u.lastFlash);   // (the colour of its lit side: blue only on a police bar)
+      B.setColorAt(n++, _wc.setHex(seg && seg.col === 'b' ? 0x2a58ff : 0xff2a20));
     }
     B.count = n; B.instanceMatrix.needsUpdate = true; B.instanceColor.needsUpdate = true;
   },

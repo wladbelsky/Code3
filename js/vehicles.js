@@ -97,11 +97,11 @@ function engineModel(liv) {
 }
 /* rear-mount aerial: the turntable over the back axles, the ladder lying forward over the cab (aerial: yaw / pitch / fly) */
 function ladderModel(liv) {
-  const g = new THREE.Group(), bars = [], L = 12.4, W = 2.5, fx = L / 2;
-  fireCab(g, bars, fx, W, 3.1, livery(liv));
-  box(g, L - 2.4, 1.55, W, FIRE_RED, -1.2, 0.95 + 0.77, 0);
+  const g = new THREE.Group(), bars = [], L = 12.4, W = 2.5, fx = L / 2, LV = livery(liv);
+  fireCab(g, bars, fx, W, 3.1, LV);
+  box(g, L - 2.4, 1.55, W, LV.body, -1.2, 0.95 + 0.77, 0);
   compartments(g, -5.4, 3.3, 1.05, 2.3, W, 5);
-  stripe(g, -L / 2, fx - 2.4, 2.4, W, FIRE_WHITE);
+  stripe(g, -L / 2, fx - 2.4, 2.4, W, LV.band);
   for (const sd of [-1, 1]) box(g, 0.9, 0.25, 0.5, DIAMOND, -4.0, 0.8, sd * (W / 2 + 0.25));   // outrigger housings
   const yawG = new THREE.Group(); yawG.position.set(-4.4, 2.5, 0); g.add(yawG);
   cyl(yawG, 1.05, 1.1, 0.35, 12, 0x5a5c60, 0, 0.17, 0);

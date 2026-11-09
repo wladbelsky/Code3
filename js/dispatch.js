@@ -105,8 +105,7 @@ const DISPATCH = {
       if (c.strikeAt != null && T > c.strikeAt) c.strikeAt = c.status === 'onscene' && CFG.visitors && c.scene && !c.scene.out && !this.secondAlarm(c) ? T + 4 : null;   // (nobody from the fire service there yet, or no engine free: a little later)
       if (c.aid && c.aid.length && (c.aidT -= dt) <= 0) {   // (the neighbours' companies come in one by one)
         c.aidT = c.type.kind === 'pursuit' ? rand(2.8, 3.4) : rand(2, 6);
-        if (c.status === 'clearing') { c.aid.forEach(v => { v.aidFor = null; }); c.aid = []; }
-        else if (c.aid[0].respond(c)) { const v = c.aid.shift(); RADIO.say('CAD', `${v.short}  DISP  #${c.id}`, 'sys'); if (Math.random() < 0.6) RADIO.say(v.radio, radioLine(ACK_LINES[v.spec.svc], this.vars(c, v)), v.spec.svc); }
+        if (c.aid[0].respond(c)) { const v = c.aid.shift(); RADIO.say('CAD', `${v.short}  DISP  #${c.id}`, 'sys'); if (Math.random() < 0.6) RADIO.say(v.radio, radioLine(ACK_LINES[v.spec.svc], this.vars(c, v)), v.spec.svc); }
       }
       if (c.arrived != null && c.status === 'onscene') {
         if (T > c.nextUpdate && ground.length && c.updates < 2) {   // (the helicopters have their own: helis.js)
@@ -114,7 +113,7 @@ const DISPATCH = {
           const u = ground.find(u => u.spec.svc === (c.type.svc === 'pd' ? 'pd' : 'fire')) || ground[0];
           RADIO.say(u.radio, radioLine(c.second && !c.scene.out && u.spec.svc === 'fire' ? ALARM2_LINES.update : UPDATE_LINES[u.spec.svc === 'pd' && c.type.svc !== 'pd' ? 'pd' : c.type.kind], this.vars(c, u)), u.spec.svc);
         }
-        if (T - c.arrived > c.dwell && (!c.scene || c.scene.ready)) { c.status = 'clearing'; c.relT = 0; }   // (a fire: once it is out)
+        if (T - c.arrived > c.dwell && (!c.scene || c.scene.ready)) { c.status = 'clearing'; c.relT = 0; if (c.aid) { c.aid.forEach(v => { v.aidFor = null; }); c.aid = []; } }   // (a fire: once it is out; the neighbours not sent yet stay out of it)
       }
       if (c.status === 'clearing') {
         c.relT -= dt;

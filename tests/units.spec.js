@@ -77,6 +77,21 @@ test('the dispatcher keeps units moving for 40 minutes without anyone getting st
   expect(runs.size).toBeGreaterThan(5);
 });
 
+test('turning at a signal, code 1 goes by its own light', async ({ wp }) => {
+  await wp.boot();
+  const r = await wp.run(() => {
+    CFG.calls = 0; CFG.traffic = 0; CFG.visitors = false; CIVS.forEach(c => c.on && c.despawn());   // (the lights alone)
+    const u = UNITS[6];   // a patrol car eastbound on Main St, left onto 1st Ave (x −50) northbound
+    u.state = 'returning'; u.lights = false; u.legs = []; u.way = new Way([[-160, 52.25], [-47.75, 52.25], [-47.75, -40]], { vmax: 15 }); u.way.s = 0; u.v = 0; u.leg = null;
+    CITY.sigT = 46;                                      // yellow → red as it comes up to the crossing
+    let stoppedAt = null;
+    for (let i = 0; i < 600 && u.way; i++) { step(0.05); if (u.pos.x > -75 && u.v < 0.05 && stoppedAt == null) stoppedAt = u.pos.x; if (u.pos.z < 40) break; }
+    return { stoppedAt };
+  });
+  expect(r.stoppedAt).not.toBeNull();
+  expect(r.stoppedAt + 2.35).toBeLessThan(-57);          // its front short of the crosswalk
+});
+
 test('code 1 stops for a red light; code 3 slows through it', async ({ wp }) => {
   await wp.boot();
   const r = await wp.run(() => {

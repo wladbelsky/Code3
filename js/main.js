@@ -114,7 +114,6 @@ function updateCamera() {
   camera.left = -viewH * aspect / 2; camera.right = viewH * aspect / 2; camera.top = viewH / 2; camera.bottom = -viewH / 2;
   camera.updateProjectionMatrix();
   ENV.ppu = h / viewH;
-  scene.fog.near = CAM_D - 40; scene.fog.far = CAM_D + 560;
   updateCameraPose();
 }
 function updateCameraPose() {
@@ -134,7 +133,7 @@ const VIEW = {
 };
 
 /* ---- time of day, season & lighting ---- */
-const _hg = new THREE.Color();
+const _hg = new THREE.Color(), WX_DAY = new THREE.Color(0x8a929c), WX_NIGHT = new THREE.Color(0x1c222c);
 function updateEnvironment() {
   const season = seasonNow(); if (season !== TERRAIN.season) TERRAIN.build(season);   // a new month, or the setting changed
   const S = SEASONS[season];
@@ -152,7 +151,7 @@ function updateEnvironment() {
   // the weather: rain dims the sun and greys the sky (the lights come on sooner); fog closes in
   const wr = WEATHER.rain, wf = WEATHER.fog, oc = Math.max(wr * 0.9, wf);
   sunLight.intensity *= lerp(1, 0.3, Math.max(wr, wf * 0.7)); hemi.intensity *= lerp(1, 0.82, oc);
-  scene.fog.color.lerp(_hg.setHex(sp.elev > -4 ? 0x8a929c : 0x1c222c), oc * 0.75); renderer.setClearColor(scene.fog.color);
+  scene.fog.color.lerp(_hg.copy(WX_NIGHT).lerp(WX_DAY, smoothstep(-8, 0, sp.elev)), oc * 0.75); renderer.setClearColor(scene.fog.color);   // (grey by day, dark at night, eased through dusk: a snap would show across the screen)
   scene.fog.near = CAM_D - lerp(40, 70, wf); scene.fog.far = CAM_D + lerp(560, 90, wf);
   ENV.smokeTint.copy(k.smoke);
   ENV.dustTint.setHex(S.ground).lerp(k.smoke, 0.45);
