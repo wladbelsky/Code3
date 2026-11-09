@@ -79,6 +79,12 @@ const ROADS = {
     }
     return out;
   },
+  /* a way through the places `via` in turn (each passed straight, heading via.dir) to `to`, then the exact points post */
+  wayVia(from, via, to, post, o) {
+    let cl = null, f = from;
+    for (const t of [...via, to]) { const c = this.route(f, t); if (!c) return null; cl = cl ? [...cl, ...c.slice(1)] : c; f = { ax: t.ax, at: t.at, a: t.a, dirs: [t.dir] }; }
+    return new Way([...this.lane(cl), ...(post || [])], o);
+  },
   /* a way from place to place: pre (exact points before the start, e.g. out of a bay), the route on the right lane,
      post (exact points after it, e.g. into a stall); o: Way options */
   way(from, to, pre, post, o) {

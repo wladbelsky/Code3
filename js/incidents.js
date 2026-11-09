@@ -33,6 +33,8 @@ const INCIDENT_TYPES = {
     details: ['Caller reports loud yelling next door.', 'Two males arguing in the parking lot.', 'Neighbor dispute over a fence.'] },
   search:    { name: 'SUSPECT SEARCH', kind: 'pd', svc: 'pd', units: ['patrol', 'patrol', 'air1'], at: ['house', 'business'], dwell: [100, 160], w: [0.5, 1, 1.5],
     details: ['Burglary suspect fled on foot, last seen heading north through the yards.', 'Caller reports a prowler in the backyards, dark clothing.', 'Driver ran from a traffic stop, last seen behind the houses.'] },
+  pursuit:   { name: 'VEHICLE PURSUIT', kind: 'pursuit', svc: 'pd', units: ['patrol'], late: true, at: ['street'], dwell: [60, 100], w: [0.15, 0.6, 1.2],
+    details: ['Stolen vehicle, driver refusing to stop.', 'County units in pursuit of a reckless driver coming into the town.', 'Red sedan fled a traffic stop in the county.'] },
   entrapment:{ name: 'MVA WITH ENTRAPMENT', kind: 'mva', svc: 'fire', units: ['engine', 'rescue', 'medic', 'patrol'], air: 'medevac', at: ['crossing'], dwell: [150, 220], w: [0.15, 0.5, 1],
     details: ['Rollover, caller says the driver is trapped and not moving.', 'Head-on collision, one pinned in the vehicle.', 'Car into a pole at speed, the driver is trapped.'] },
   medevac:   { name: 'MEDEVAC REQUEST', kind: 'air', svc: 'ems', units: ['medevac'], at: ['air'], dwell: [50, 90], w: [0.4, 0.5, 0.6],

@@ -40,6 +40,13 @@ const ALARM2_LINES = {
   arriveEms: ['{U} on scene, setting up rehab at the command post.', '{U} arriving on the second alarm, staging with command.'],
   update: ['{U}, exposures are protected, still heavy fire in the attic.', '{U}, we have water on it from three sides.', '{U}, roof is failing on the east side, everybody stay out.']
 };
+/* a pursuit: the chase called on the radio ({S} the street, {X} the heading, {N} the speed), and the end of it */
+const PURSUIT_LINES = {
+  start: ['{U}, in pursuit of a red sedan, {X}-bound on {S}, speeds of {N}.', '{U}, vehicle failed to stop, {X}-bound on {S}, {N} miles an hour.'],
+  chase: ['{U}, still {X}-bound on {S}, speeds {N}.', '{U}, turning {X} on {S}.', '{U}, he ran the light, {X} on {S}, {N} now.', '{U}, {S}, {X}-bound, traffic is getting out of the way.'],
+  air: ['{U}, we have the vehicle, {X}-bound on {S}.', '{U} has eyes on him, {S}, heading {X}.'],
+  stop: ['{U}, suspect vehicle has stopped at {A}. Driver is out, one in custody.', '{U}, he lost it at {A}. Vehicle is stopped, taking one into custody.']
+};
 /* units answering the tone-out */
 const ACK_LINES = {
   fire: ['{U}, responding.', '{U} copies, responding.', '{U} en route.'],
@@ -54,12 +61,14 @@ const ON_SCENE = {
   mva: ['{U} on scene, two vehicles, moderate damage. Checking for injuries.', '{U} on scene, one vehicle into a pole. Fluids on the roadway.', '{U} on scene, minor collision, blocking the eastbound lane.'],
   vehicle: ['{U} on scene, passenger vehicle, fire in the engine compartment.', '{U} on scene, smoke from under the hood, no extension.'],
   gas: ['{U} on scene, odor of gas outside the structure. Metering now.', '{U} on scene, nothing on the meter at the door.'],
+  pursuit: ['{U}, at {A}.', '{U}, I\'m at {A}, setting up here.', '{U} arriving at {A}.'],
   pd: ['{U}, 10-97.', '{U}, on scene.', '{U}, 10-97, will advise.'],
   stop: ['{U}, out with one occupant.', '{U}, out on the stop, plate to follow.'],
   far: ['{U} on scene with mutual aid command.', '{U} on scene, reporting to command.']
 };
 /* later in the call */
 const UPDATE_LINES = {
+  pursuit: ['{U}, one in custody, vehicle comes back stolen.', '{U}, area is secure, we\'ll need a tow at {A}.', '{U}, suspect is secure. No injuries.'],
   structure: { routine: ['{U}, primary search is negative.', '{U}, knockdown on the fire. We\'ll be checking for extension.', '{U}, fire is under control.'],
     busy: ['{U}, primary search is negative.', '{U}, we have the fire knocked down, opening up the walls.', '{U}, ventilation is complete.'],
     surge: ['{U}, we need another line on side charlie.', '{U}, fire extending into the attic. Pulling crews back for a second.', '{U}, knockdown. Holding all units on scene.'] },
@@ -81,6 +90,7 @@ const CLEAR_LINES = {
 const AIR_LINES = {
   air1: {
     disp: ['{L}, assist units at {A}, {T}. {D}', '{L}, respond to {A}, {T}, units on scene. {D}'],
+    dispChase: ['{L}, vehicle pursuit coming into town. {D}', '{L}, get up and pick up the pursuit, red sedan. {D}'],
     ack: ['{U} copies, lifting.', '{U}, we\'re up, about a minute out.', '{U}, copy, en route.'],
     onScene: ['{U} is overhead, starting a search pattern.', '{U}, on scene, setting up an orbit.', '{U} overhead {A}.'],
     night: ['{U} is overhead, light is on.', '{U}, on scene, we\'ll light up the backyards.', '{U} overhead, FLIR is up.'],

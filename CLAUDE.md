@@ -17,7 +17,7 @@ dispatch board), the splash and the settings drawer to match — done (see "Pane
 preview GIF, screenshots, README — done; left: the Workshop upload (by hand, from WE) and GitHub Pages for the live demo.
 **After stage 9** (approved, in this order): civilian headlights at night — done; drills at the station in quiet hours —
 done; routine vehicles (school bus, garbage truck, delivery van) — done; weather (rain / fog, wet reflections, more crashes) — done;
-2nd-alarm fires with the neighbouring districts' units joining — done; a police pursuit with Air 1; pedestrians **last, as a
+2nd-alarm fires with the neighbouring districts' units joining — done; a police pursuit with Air 1 — done; pedestrians **last, as a
 concept first** (a basic model, screenshots and a performance measurement before building it out). Also: in the browser
 the ⚙ Settings button overlaps the CAD terminal (radio log) — move one of them.
 Original work in the genre: no names, logos, models or assets of existing games or real departments; the town is
@@ -57,7 +57,7 @@ fictional (default FAIRHAVEN).
 
 ## Rules / conventions
 - **After changing any JS/CSS file, bump the cache-buster** `?v=N` on all `<script>`/`<link>` tags in
-  `index.html` (WE's CEF caches aggressively). Current: `v=18`.
+  `index.html` (WE's CEF caches aggressively). Current: `v=19`.
 - **New WE property**: add it to `project.json`, read it in `applyUserProperties` (`main.js`) into `CFG`,
   then run `python tools/gen_properties.py`. Property `order` decides the browser-drawer group
   (0–9 camera/time, 10–19 audio/calls, 20–29 terrain & season, 30–39 panel & terminal, 40–49 units, 50–59 town).
@@ -138,6 +138,13 @@ fictional (default FAIRHAVEN).
   released first, and leave off the screen (`Visitor.goHome`). The scene (`strike`, `big`, `bigK`) flares until a
   neighbour is working (at most 150 s), three more emitters, each stream worth half; up to three engine lines (`yards` /
   `targets` / `crews`) and two aerials (a neighbour's only within 34 m).
+- **Pursuit** (`PursuitScene`, `scenes.js`; `SUSPECT`, `class Suspect`; call type `pursuit`, `late`: its scene asks for the units;
+  only with `visitors` on, a free sheriff's cruiser and no pursuit running: `pursuitReady`): the car comes in off the screen and
+  runs ~450–1000 m through two crossings (`ROADS.wayVia`, `plan`) to a curb of the site, on the road like a code 3 unit (cars
+  pull over, `MOVERS`) but without lights, a little slower than a cruiser (`suspect.vmax` 17). Up to two sheriff's cars
+  (`c.aid`, `Visitor.respond` → `wayFor`: the same route, a Way of their own, to a free curb, 22 m clear to start) catch up
+  and sit behind it; Air 1 follows (`goal.follow`: `goal` is moved to the car every step, straight after it beyond its orbit).
+  Under 260 m to go the town's two patrols are called in to meet it. It stops (`stopped`), `ready` 35 s after; `close` hides it.
 - **Drills** (`DRILLS`, `units.js`; state `drill`, tile 'Training'): with the load < 0.2 and calls on, every 3–6 min a
   free fire / EMS unit with a bay rolls out onto the apron in front of it (`spot`: its tail just clear of the door), works
   80–140 s — the engine's deck gun straight up (`pump`), the ladder's aerial raised (`aerial`), the rescue / medics washed
@@ -246,7 +253,7 @@ fictional (default FAIRHAVEN).
   centre to centre (as they really fit — no to and fro over who is first). A car closer than its margin behind whoever is
   ahead stands (no creeping on at their pace).
 - **Safety net** (`TRAFFIC.tidy`, every 2 s): a unit that has not got 3 m on its way in 25 s while it and a car wait for
-  each other (`yieldTo`, `blocker`, or the box it waits at for that unit: `boxFor`) — or the car has stood 25 s giving way (a ring through other units): the car goes (`TRAFFIC.cleared`). Two units waiting for each other 20 s: the first in the roster takes the other for 6 s by its centre alone (`ghost`, `TRAFFIC.unstuck`: its way ignored, never its centre). The rules untangle nearly all standoffs; this is for the rare rest.
+  each other (`yieldTo`, `blocker`, or the box it waits at for that unit: `boxFor`) — or the car has stood 25 s giving way (a ring through other units): the car goes (`TRAFFIC.cleared`). Two units waiting for each other 20 s: one of them, turn about, takes the other for 6 s by its centre alone (`ghost`, `TRAFFIC.unstuck`: its way ignored, never its centre). The rules untangle nearly all standoffs; this is for the rare rest.
 - **Obstacles** at the curb (units on scene, wrecks, burnt cars): a car eases left round them, slowly.
 - **Routine vehicles** (`ROUTINE`; `Civ` with a `kind`: their own models `busModel` / `garbageModel` / `deliveryModel`,
   warning lights as `bars`): one of each in the pool, set out by the hour (the bus 7–8:45 and 14:30–16:30, the garbage

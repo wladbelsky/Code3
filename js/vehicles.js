@@ -215,4 +215,5 @@ function deliveryModel() {
   }
   return { group: g, bars, len: S.L, wid: S.W };
 }
-const UNIT_MODELS = { engine: engineModel, ladder: ladderModel, rescue: rescueModel, medic: medicModel, chief: chiefModel, patrol: patrolModel };
+const suspectModel = () => ({ group: carModel('sedan', 0xb02818), bars: [], len: CAR_SPECS.sedan.L, wid: CAR_SPECS.sedan.W, dyn: [] });   // (the car in a pursuit)
+const UNIT_MODELS = { engine: engineModel, ladder: ladderModel, rescue: rescueModel, medic: medicModel, chief: chiefModel, patrol: patrolModel, suspect: suspectModel };

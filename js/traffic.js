@@ -314,7 +314,7 @@ const TRAFFIC = {
         c.despawn(); this.cleared++; u.prog.t = T; }
       // two units each waiting for the other that long: the first in the roster ignores the other for 6 s (each is in the
       // other's way only by the body circles; centre to centre they fit — the tests' overlap check holds them to that)
-      const o = u.wait; if (T - u.prog.t > 20 && o instanceof Unit && o.wait === u && u.i < o.i && !(u.ghostUntil > T)) { u.ghost = o; u.ghostUntil = T + 6; this.unstuck++; u.prog.t = T; }
+      const o = u.wait; if (T - u.prog.t > 20 && o instanceof Unit && o.wait === u && (u.i < o.i) === (this.unstuck % 2 === 0) && !(u.ghostUntil > T)) { u.ghost = o; u.ghostUntil = T + 6; this.unstuck++; u.prog.t = T; if (o.prog) o.prog.t = T; }   // (turn about: the first may be the one that cannot move)
     }
   }
 };

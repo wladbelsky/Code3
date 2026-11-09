@@ -203,7 +203,7 @@ const WEATHER = {
     this.lamps.material.opacity = 0.42 * w * ENV.lightsOn;
     B.material.opacity = 0.6 * w * lerp(0.45, 1, ENV.night);
     let n = 0;
-    for (const u of MOVERS) if (u.lastFlash >= 0 && u.model.group.visible && n < WET_BARS) {
+    for (const u of MOVERS) if (u.lastFlash >= 0 && u.model.bars.length && u.model.group.visible && n < WET_BARS) {
       B.setMatrixAt(n, _wm.compose(_wp.set(u.pos.x + WET_D.x * 5, 0.06, u.pos.z + WET_D.z * 5), _wq, _ws.set(14, 1, 5.5)));
       B.setColorAt(n++, _wc.setHex(u.lastFlash ? 0x2a58ff : 0xff2a20));
     }

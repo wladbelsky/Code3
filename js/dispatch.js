@@ -19,7 +19,7 @@ const DISPATCH = {
   free(type) { return (HELI_TYPES[type] ? HELIS : UNITS).filter(u => u.type === type && u.state === 'quarters' && !u.callRef); },
   /* a call type by the load tier's weights, among those whose first unit type has someone free */
   pickType() {
-    const tier = LOAD_TIERS.indexOf(loadTier()), c = Object.entries(INCIDENT_TYPES).filter(([, t]) => t.w[tier] > 0 && this.free(t.units[0]).length);
+    const tier = LOAD_TIERS.indexOf(loadTier()), c = Object.entries(INCIDENT_TYPES).filter(([, t]) => t.w[tier] > 0 && this.free(t.units[0]).length && (t.kind !== 'pursuit' || pursuitReady()));
     const w = t => t.w[tier] * (t.kind === 'mva' ? 1 + 1.5 * WEATHER.rain : 1);   // (crashes: more in the rain)
     let r = Math.random() * c.reduce((s, [, t]) => s + w(t), 0);
     for (const [k, t] of c) if ((r -= w(t)) <= 0) return k;
@@ -27,7 +27,7 @@ const DISPATCH = {
   },
   newCall(key) {
     const type = INCIDENT_TYPES[key], s = pickSite(pick(type.at), this.open.map(c => c.site)); if (!s) return null;
-    const need = [...type.units]; for (const [u, p] of type.extra || []) if (Math.random() < p) need.push(u);
+    const need = type.late ? [] : [...type.units]; for (const [u, p] of type.extra || []) if (Math.random() < p) need.push(u);   // (late: its scene asks for them)
     const c = { id: `26-${110341 + this.seq++}`, key, type, site: s, need, units: [], t: T, status: 'pending', arrived: null, dwell: rand(...type.dwell), updates: 0, detail: type.details ? pick(type.details) : '', strike: type.kind === 'structure' && Math.random() < lerp(0.25, 0.7, LOAD.level) };
     this.calls.push(c); PERSIST.count(c);
     SCENES.open(c);
@@ -62,11 +62,11 @@ const DISPATCH = {
       if (c.type.self) RADIO.say(got[0].radio, radioLine(['{U}, traffic stop, {A}.', '{U}, I\'ll be out on a stop, {A}.', '{U}, show me out with a vehicle, {A}.'], v), 'pd', 1);
       else {
         const air = got.every(u => u.air) && AIR_LINES[got[0].type], far = c.site.kind === 'air';   // (a helicopter on its own: its own launch request)
-        RADIO.say('DISPATCH', radioLine(air ? air[far ? 'dispFar' : 'disp'] : DISPATCH_LINES[c.type.kind === 'far' ? 'far' : c.type.svc], Object.assign(v, { L: nameList(got) })), 'disp', 2);
+        RADIO.say('DISPATCH', radioLine(air ? air[far ? 'dispFar' : c.type.kind === 'pursuit' ? 'dispChase' : 'disp'] : DISPATCH_LINES[c.type.kind === 'far' ? 'far' : c.type.svc], Object.assign(v, { L: nameList(got) })), 'disp', 2);
         for (const u of got) if (u.air || Math.random() < 0.75) RADIO.say(u.radio, radioLine(u.air ? AIR_LINES[u.type][far ? 'ackFar' : 'ack'] : ACK_LINES[u.spec.svc], this.vars(c, u)), u.spec.svc);
       }
       if (c.status === 'pending' || c.status === 'holding') c.status = 'dispatched';
-    } else if (!c.units.length && c.status === 'pending') { c.status = 'holding'; RADIO.say('DISPATCH', radioLine(HOLD_LINES, { P: titleCase(CFG.townName) }), 'disp', 1); }
+    } else if (!c.units.length && c.status === 'pending' && !c.type.late) { c.status = 'holding'; RADIO.say('DISPATCH', radioLine(HOLD_LINES, { P: titleCase(CFG.townName) }), 'disp', 1); }
   },
   /* the fire has got away from the first alarm: the neighbours' companies are called in (VISITORS), if an engine is free */
   secondAlarm(c) {
@@ -104,7 +104,7 @@ const DISPATCH = {
       const there = c.units.filter(u => u.callRef === c && (u.state === 'on_scene' || (u.state === 'away' && !u.homeQ))), ground = there.filter(u => !u.air);
       if (c.strikeAt != null && T > c.strikeAt) c.strikeAt = c.status === 'onscene' && CFG.visitors && c.scene && !c.scene.out && !this.secondAlarm(c) ? T + 4 : null;   // (nobody from the fire service there yet, or no engine free: a little later)
       if (c.aid && c.aid.length && (c.aidT -= dt) <= 0) {   // (the neighbours' companies come in one by one)
-        c.aidT = rand(2, 6);
+        c.aidT = c.type.kind === 'pursuit' ? rand(2.8, 3.4) : rand(2, 6);
         if (c.status === 'clearing') { c.aid.forEach(v => { v.aidFor = null; }); c.aid = []; }
         else if (c.aid[0].respond(c)) { const v = c.aid.shift(); RADIO.say('CAD', `${v.short}  DISP  #${c.id}`, 'sys'); if (Math.random() < 0.6) RADIO.say(v.radio, radioLine(ACK_LINES[v.spec.svc], this.vars(c, v)), v.spec.svc); }
       }
@@ -151,7 +151,7 @@ const DISPATCH = {
         RADIO.say(u.radio, radioLine(ON_SCENE[svc === 'pd' && c.type.svc !== 'pd' ? 'pd' : c.type.kind], v), svc, 1);
         if (c.type.air) { RADIO.say(u.radio, radioLine(REQ_AIR_LINES, v), svc, 1); c.need.push(c.type.air); }   // the first in asks for the helicopter
         if (c.strike) c.strikeAt = T + rand(14, 28);
-      } else if (u.aid) RADIO.say(u.radio, radioLine(svc === 'ems' ? ALARM2_LINES.arriveEms : ALARM2_LINES.arrive, v), svc);
+      } else if (u.aid && c.type.kind === 'structure') RADIO.say(u.radio, radioLine(svc === 'ems' ? ALARM2_LINES.arriveEms : ALARM2_LINES.arrive, v), svc);
       else if (Math.random() < 0.5) RADIO.say(u.radio, radioLine(svc === 'pd' ? ON_SCENE.pd : ['{U} on scene.', '{U} arriving.'], v), svc);
     } else if (to === 'returning') {
       RADIO.say('CAD', `${u.short}  AVAIL`, 'sys');
@@ -168,7 +168,7 @@ DISPATCH.onAir = function (u, from, to) {
   else if ((to === 'on_scene' || to === 'away') && c) {
     RADIO.say('CAD', `${u.short}  ONSC  #${c.id}`, 'sys');
     RADIO.say(u.radio, radioLine(to === 'away' ? L.away : ENV.night > 0.5 && L.night ? L.night : L.onScene, v), svc, 1);
-    if (c.arrived == null && c.units.every(x => x.air)) { c.arrived = T; c.status = 'onscene'; c.nextUpdate = Infinity; }   // a call of its own (out of town)
+    if (c.arrived == null && c.units.every(x => x.air) && c.type.kind !== 'pursuit') { c.arrived = T; c.status = 'onscene'; c.nextUpdate = Infinity; }   // a call of its own (out of town)
   } else if (to === 'returning' && c) { RADIO.say('CAD', `${u.short}  AVAIL`, 'sys'); RADIO.say(u.radio, radioLine(L.clear, v), svc); u.callRef = null; }
   else if (to === 'transporting') { RADIO.say('CAD', `${u.short}  TRAN  MEMORIAL`, 'sys'); RADIO.say(u.radio, radioLine(L.transport, v), svc, 1); }
   else if (to === 'at_hospital') { RADIO.say('CAD', `${u.short}  AT HOSP`, 'sys'); RADIO.say(u.radio, radioLine(L.atHosp, v), svc); }

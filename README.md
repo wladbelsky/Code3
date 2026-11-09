@@ -100,6 +100,9 @@ position, **Calls when it is quiet** (how often calls come in without music).
 - **Second alarm**: a house fire can get away from the first companies. Command strikes a second alarm, the fire flares up
   and the neighbouring county's engines, truck and medic come in lights and sirens, work it alongside the town's units and
   appear on the call's card. It needs **Units from other districts passing through** on.
+- **Police pursuit**: a red sedan comes into town at speed with sheriff's cruisers on its tail and Air 1 overhead (its searchlight
+  on the car at night). The radio calls the streets as it goes, traffic pulls over, and the town's patrols are sent to meet it where
+  it finally stops at the curb. It needs **Units from other districts passing through** on.
 - **Crashes**: two wrecks near the crossing, steam from a radiator, cones; **car fires** burn until the engine's water
   puts them out and the car is left charred.
 - **Crews** stand by their units: firefighters, EMTs, officers.

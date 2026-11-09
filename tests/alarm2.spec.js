@@ -25,11 +25,11 @@ test('a second alarm: the fire flares up, the neighbours come in off the screen,
   const out = await wp.until(() => DISPATCH.calls[0].scene.out, 300);
   expect(out.violations).toEqual([]);
   expect(out.done, 'knocked down').toBe(true);
-  const end = await wp.until(() => DISPATCH.calls[0].status === 'closed' && MOVERS.every(u => u.state === 'quarters'), 500);
+  const end = await wp.until(() => DISPATCH.calls[0].status === 'closed' && UNITS.every(u => u.state === 'quarters') && VISITORS.every(v => !v.aid), 500);   // (one may be just passing through)
   expect(end.violations).toEqual([]);
   expect(end.done, 'closed, everyone gone').toBe(true);
-  const h = await wp.run(() => ({ shown: VISITORS.filter(v => v.model.group.visible).length, ref: VISITORS.filter(v => v.callRef || v.aid || v.aidFor).length, crew: CREW.used.filter(Boolean).length }));
-  expect(h).toEqual({ shown: 0, ref: 0, crew: 0 });
+  const h = await wp.run(() => ({ ref: VISITORS.filter(v => v.callRef || v.aid || v.aidFor).length, crew: CREW.used.filter(Boolean).length }));
+  expect(h).toEqual({ ref: 0, crew: 0 });
   const g1 = await wp.run(() => __t.geometries());
   expect(g1.leaked).toBe(0);
   expect(g1.reach).toBeLessThanOrEqual(g0.reach);

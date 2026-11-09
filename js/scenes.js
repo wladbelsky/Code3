@@ -13,7 +13,7 @@
 const SCENES = {
   list: [],
   open(c) {
-    const k = c.type.kind, S = k === 'structure' && c.site.house ? new FireScene(c) : k === 'vehicle' ? new CarFireScene(c) : k === 'mva' ? new CrashScene(c) : null;
+    const k = c.type.kind, S = k === 'structure' && c.site.house ? new FireScene(c) : k === 'vehicle' ? new CarFireScene(c) : k === 'mva' ? new CrashScene(c) : k === 'pursuit' ? new PursuitScene(c) : null;
     if (S) { c.scene = S; this.list.push(S); }
   },
   update(dt) {
@@ -96,6 +96,67 @@ class FireScene {
     this.closed = true; this.dropCrews();
     for (const u of this.c.units) if (u.model.aerial) u.aerialWant = 0;
   }
+}
+
+/* ---- a pursuit: a car comes in off the screen and runs through town with the neighbours' cruisers on its tail (VISITORS, along
+   the same route), Air 1 after it; the town's patrols are called in when it is near the end, where it stops at the curb ---- */
+const pursuitReady = () => CFG.visitors && SUSPECT.state === 'quarters' && VISITORS.some(v => v.type === 'patrol' && v.state === 'quarters' && !v.aidFor);
+const streetAt = (x, z) => { const L = CITY_LAYOUT, s = L.streets.find(q => Math.abs(z - q.z) < EDGE), a = L.avenues.find(q => Math.abs(x - q.x) < EDGE); return (s || a || L.streets[0]).name; };
+class PursuitScene {
+  constructor(c) { this.c = c; this.on = false; this.halted = false; this.haltT = 0; this.called = false; this.tryT = 0; this.talkT = 0; }
+  get ready() { return this.halted && T - this.haltT > 35; }
+  /* a place to pass through: a crossing, along one of its two streets */
+  place() {
+    const L = CITY_LAYOUT, x = pick(L.avenues).x, z = pick(L.streets).z, sg = Math.random() < 0.5;
+    return Math.random() < 0.5 ? { ax: 'ew', at: z, a: x, dir: sg ? 'E' : 'W' } : { ax: 'ns', at: x, a: z, dir: sg ? 'N' : 'S' };
+  }
+  plan(d, o) {
+    const to = { ax: d.ax, at: d.at, a: d.a, dir: d.dir }; let best = null;
+    for (let n = 0; n < 16; n++) {
+      const start = endIn(offEnd()), via = [this.place(), this.place()], w = ROADS.wayVia(start, via, to, [d.curb], o);
+      if (!w) continue;
+      if (w.len > 450 && w.len < 1000) return { start, via, w };
+      if (!best || Math.abs(w.len - 700) < Math.abs(best.w.len - 700)) best = { start, via, w };
+    }
+    return best;
+  }
+  /* the cruisers' way: its route, to a curb of their own (a Way carries its driver's progress: one each) */
+  wayFor(u, d) { return ROADS.wayVia(this.route.start, this.route.via, { ax: d.ax, at: d.at, a: d.a, dir: d.dir }, [d.curb], u.runOpts(true)); }
+  start() {
+    const c = this.c, d = siteDest(c.site, 0), p = this.plan(d, SUSPECT.runOpts(true));
+    if (!p || !SUSPECT.enter(p.w, d)) return;
+    this.on = true; this.route = p; SUSPECT.scene = this; this.talkT = rand(9, 13);
+    c.status = 'dispatched'; c.need.push('air1');
+    const pool = VISITORS.filter(v => v.type === 'patrol' && v.state === 'quarters' && !v.aidFor).slice(0, 2);
+    pool.forEach(v => { v.aidFor = c; }); c.aid = pool; c.aidT = rand(2.8, 3.4);
+    if (pool.length) RADIO.say(pool[0].radio, radioLine(PURSUIT_LINES.start, this.vars(pool[0])), 'pd', 2);
+  }
+  vars(u) {
+    const h = SUSPECT.pos.h, q = Math.round(((h % TAU) + TAU) % TAU / (Math.PI / 2)) % 4, onScreen = VIEW.onScreen(_sp.set(SUSPECT.pos.x, 0, SUSPECT.pos.z), 0);
+    return Object.assign(DISPATCH.vars(this.c, u), { S: titleCase(onScreen ? streetAt(SUSPECT.pos.x, SUSPECT.pos.z) : lineOf(this.route.start.ax, this.route.start.at).name), X: ['east', 'south', 'west', 'north'][q], N: String(Math.round(Math.max(35, SUSPECT.v * 2.24 + rand(0, 8)))) });
+  }
+  /* the end of the road: it stands at the curb, the driver out */
+  stopped() {
+    this.halted = true; this.haltT = T;
+    for (let i = 0; i < 14; i++) FX.smoke.spawn(_sp.set(SUSPECT.pos.x + rand(-2, 2), 0.4, SUSPECT.pos.z + rand(-2, 2)), { v: _sv.set(rand(-1, 1), rand(0.5, 1.5), rand(-1, 1)), s0: 1, s1: 4, life: rand(1, 2), a0: 0.45, color: 0xc8c4bc });
+    const u = this.c.units.find(x => x.callRef === this.c && !x.air && x.aid) || this.c.units.find(x => x.callRef === this.c);
+    if (u) RADIO.say(u.radio, radioLine(PURSUIT_LINES.stop, this.vars(u)), 'pd', 2);
+  }
+  update(dt) {
+    if (this.closed) { this.done = true; return; }
+    const c = this.c, S = SUSPECT;
+    if (!this.on) { if (S.state === 'quarters' && (this.tryT -= dt) <= 0) { this.tryT = 1; this.start(); } return; }
+    const air = c.units.find(u => u.air && u.callRef === c);
+    if (air && air.goal && air.goal.kind === 'orbit') { air.goal.follow = !this.halted; air.goal.x = S.pos.x; air.goal.z = S.pos.z; }
+    if (!this.called && S.way && S.way.len - S.way.s < 260) { this.called = true; c.need.push('patrol', 'patrol'); }   // (the town's cars: to meet it where it ends up)
+    if (!this.halted && (this.talkT -= dt) <= 0) {
+      this.talkT = rand(8, 13);
+      const on = c.units.filter(u => u.callRef === c && u.state === 'responding' && u.aid), up = air && air.state === 'on_scene' && Math.random() < 0.4;
+      if (up) RADIO.say(air.radio, radioLine(PURSUIT_LINES.air, this.vars(air)), 'pd', 1);
+      else if (on.length) RADIO.say(on[0].radio, radioLine(PURSUIT_LINES.chase, this.vars(on[0])), 'pd', 1);
+    }
+  }
+  close() { this.closed = true; if (SUSPECT.scene === this) SUSPECT.gone(); }
 }
 
 /* ---- pooled props: crash / burning cars, cones ---- */

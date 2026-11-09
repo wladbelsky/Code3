@@ -163,6 +163,7 @@ class Heli {
     if (G.kind === 'orbit') {
       const a = Math.atan2(p.z - G.z, p.x - G.x);
       hd = a + Math.PI / 2 + clamp((d - S.orbitR) / S.orbitR * 1.5, -1.2, 1.3); vt = d > S.orbitR + 60 ? S.cruise : S.orbitV;
+      if (G.follow && d > S.orbitR + 15) { hd = Math.atan2(dz, dx); vt = S.cruise * 1.25; }   // (a pursuit: straight after the car)
       if (!G.there && Math.abs(d - S.orbitR) < 12) { G.there = true; this.arrive(false); }
       if (this.state === 'on_scene' && !this.said && this.t > 25 && this.callRef) { this.said = true; RADIO.say(this.radio, radioLine(AIR_LINES.air1.update, DISPATCH.vars(this.callRef, this)), 'pd'); }
     } else {

@@ -46,6 +46,9 @@ const SCENES = {
   // a second alarm: the neighbours' lime engines at the curb, three streams, the roof going
   alarm2: { hour: 21, season: 'autumn', zoom: 170, at: [0, 0], prep: () => { CFG.calls = 0; const c = DISPATCH.newCall('structure'); c.strike = true; CAM_TGT.set(c.site.house.x, 0, c.site.house.z - 8); updateCamera(); },
     until: () => { const c = DISPATCH.calls[0]; return c.second && c.units.some(u => u.aid && u.type === 'engine' && u.state === 'on_scene' && u.t > 9); } },
+  // a pursuit at night: the red sedan, a sheriff's cruiser right behind it, Air 1 over them
+  pursuit: { hour: 22, season: 'summer', zoom: 130, at: [0, 0], prep: () => { CFG.calls = 0; DISPATCH.newCall('pursuit'); },
+    until: () => { const S = SUSPECT, c = DISPATCH.calls[0]; CAM_TGT.set(S.pos.x + 12, 0, S.pos.z - 12); updateCamera(); return S.state === 'responding' && Math.abs(S.pos.x) < 110 && Math.abs(S.pos.z) < 110 && c.units.some(u => u.aid && u.state === 'responding' && Math.hypot(u.pos.x - S.pos.x, u.pos.z - S.pos.z) < 70); } },
   // the weather
   rain: { hour: 20.8, season: 'summer', zoom: 170, at: [0, 0], prep: () => { CFG.sky = 'rain'; WEATHER.rain = 1; CFG.calls = 0; UNITS[0].dispatch(houseDest(CITY.houses[22], 0)); UNITS[3].dispatch(houseDest(CITY.houses[22], 1)); }, until: () => UNITS[0].state === 'responding' && UNITS[0].pos.z > 49 && UNITS[0].pos.x > -24 },
   rainday: { hour: 13, season: 'autumn', zoom: 170, at: [0, 0], prep: () => { CFG.sky = 'rain'; WEATHER.rain = 1; __t.sim(40); } },

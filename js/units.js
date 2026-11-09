@@ -17,7 +17,8 @@ const UNIT_TYPES = {
   rescue: { svc: 'fire', name: 'RESCUE', tag: 'R', vmax: 14, alat: 2.6, turnout: [18, 30] },
   medic:  { svc: 'ems',  name: 'MEDIC', tag: 'M', vmax: 17, alat: 3.2, turnout: [14, 24] },
   chief:  { svc: 'fire', name: 'BATTALION', tag: 'BC', vmax: 19, alat: 4.5, turnout: [10, 18] },
-  patrol: { svc: 'pd',   name: 'UNIT', tag: 'P', vmax: 20, alat: 5, turnout: [3, 6] }
+  patrol: { svc: 'pd',   name: 'UNIT', tag: 'P', vmax: 20, alat: 5, turnout: [3, 6] },
+  suspect: { svc: 'pd',  name: 'SUSPECT', tag: 'S', vmax: 17, alat: 5, turnout: [0, 0] }   // (a little slower than the cruisers: they catch up and sit on its tail)
 };
 /* the default roster: [type, callsign, home]; bays west → east */
 const ROSTER = [['engine', 'ENGINE 12', { bay: 0 }], ['ladder', 'LADDER 12', { bay: 1 }], ['rescue', 'RESCUE 12', { bay: 2 }],
@@ -456,7 +457,8 @@ function buildUnits() {
   MOVERS.forEach(u => u.dispose());
   UNITS = ROSTER.map(([type, cs, home], i) => new Unit(type, cs, home, i));
   VISITORS = VISITOR_ROSTER.map(([type, cs, liv], i) => new Visitor(type, cs, LIVERY[liv], 100 + i));
-  MOVERS = [...UNITS, ...VISITORS];
+  SUSPECT = new Suspect('suspect', 'SUSPECT 1', null, 200);
+  MOVERS = [...UNITS, ...VISITORS, SUSPECT];
 }
 
 /* ===== Station life in a quiet town: drills on the apron =====
@@ -561,9 +563,9 @@ class Visitor extends Unit {
   get zoneOut() { return null; }
   get zoneIn() { return null; }
   /* on the road along way w, code 3 (false: its start is not clear) */
-  enter(w, call) {
+  enter(w, call, clear = 40) {
     const p = w.at(0, _ua);
-    if ([...MOVERS, ...CIVS].some(o => o !== this && o.model.group.visible && Math.hypot(o.pos.x - p.x, o.pos.z - p.z) < 40)) return false;
+    if ([...MOVERS, ...CIVS].some(o => o !== this && o.model.group.visible && Math.hypot(o.pos.x - p.x, o.pos.z - p.z) < clear)) return false;
     this.state = 'responding'; this.lights = true; this.t = 0; this.call = call; this.latOff = 0; this.blockT = 0;
     this.model.group.visible = true; this.yaw = null; this.place(p.x, p.z, p.h, false); this.v = p.v * 0.8;
     this.go([{ way: w }]);
@@ -574,8 +576,8 @@ class Visitor extends Unit {
   /* a second alarm: in off the screen to a curb of the call, on the call's card like the town's units */
   respond(c) {
     const k = DISPATCH.freeSlot(c, this, true); if (k < 0) return false;   // (the curb is full: it waits off the screen)
-    const d = siteDest(c.site, k), w = ROADS.way(endIn(offEnd()), { ax: d.ax, at: d.at, a: d.a, dir: d.dir }, null, [d.curb], this.runOpts(true));
-    if (!w || !this.enter(w, d)) return false;
+    const d = siteDest(c.site, k), w = c.scene && c.scene.wayFor ? c.scene.wayFor(this, d) : ROADS.way(endIn(offEnd()), { ax: d.ax, at: d.at, a: d.a, dir: d.dir }, null, [d.curb], this.runOpts(true));
+    if (!w || !this.enter(w, d, c.scene && c.scene.wayFor ? 22 : 40)) return false;   // (a cruiser: close behind the car it is after)
     this.callRef = c; this.aid = true; c.units.push(this);
     return true;
   }
@@ -591,12 +593,19 @@ class Visitor extends Unit {
     this.state = 'quarters'; this.lights = false; this.call = null; this.callRef = null; this.aid = false; this.aidFor = null; this.v = 0; this.model.group.visible = false; this.place(this.home.x, this.home.z, 0, false);
   }
 }
+/* the car in a pursuit (PursuitScene): one, on the road like a code 3 unit (the cars get out of its way — the cruisers are right behind it), no lights */
+class Suspect extends Visitor {
+  arrive() { this.v = 0; this.state = 'on_scene'; this.t = 0; this.lights = false; if (this.scene) this.scene.stopped(); }
+  gone() { this.scene = null; this.way = null; this.legs = []; this.state = 'quarters'; this.lights = false; this.call = null; this.v = 0; this.model.group.visible = false; this.place(this.home.x, this.home.z, 0, false); }
+}
+let SUSPECT = null;
 const VISITS = {
   timer: 30, passed: 0,
   /* how many at once, and the time to the next: rare in a quiet town, a steady stream under a heavy load */
   wanted() { return CFG.visitors ? 1 + Math.floor(LOAD.level * 2.6) : 0; },
   update(dt) {
     for (const v of VISITORS) v.update(dt);
+    SUSPECT.update(dt);
     if ((this.timer -= dt) > 0) return;
     this.timer = lerp(200, 25, LOAD.level) * rand(0.6, 1.4);
     const free = VISITORS.filter(v => v.state === 'quarters' && !v.aidFor);   // (not those called in on a second alarm)
